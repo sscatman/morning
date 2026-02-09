@@ -9,7 +9,7 @@ import time
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.41)", # 버전 업데이트
+    page_title="위험도 분석 (V0.42)", # 버전 업데이트
     page_icon="📊",
     layout="wide"
 )
@@ -174,26 +174,37 @@ st.markdown("""
     .guide-section-title {
         font-size: 16px;
         font-weight: 700;
-        margin-top: 15px;
-        margin-bottom: 8px;
+        margin-top: 20px;
+        margin-bottom: 10px;
         color: #333 !important;
     }
     .guide-text {
         font-size: 15px;
-        line-height: 1.6;
+        line-height: 1.7;
         margin-bottom: 10px;
         color: #444 !important;
     }
+    /* 리스트 스타일 */
+    .guide-box ul {
+        margin: 0;
+        padding-left: 20px;
+        margin-bottom: 10px;
+    }
+    .guide-box li {
+        margin-bottom: 5px;
+    }
+    
     /* 다크모드 대응 */
     .guide-box p, .guide-box li, .guide-box span, .guide-box div, .guide-box strong { color: #111 !important; }
     
     .factor-container {
         display: flex;
         gap: 20px;
-        margin-top: 20px;
+        margin-top: 25px;
         background-color: #f9f9f9;
         padding: 15px;
         border-radius: 10px;
+        border: 1px solid #eee;
     }
     .factor-column { flex: 1; }
     @media (max-width: 768px) {
@@ -361,7 +372,7 @@ kst_now = datetime.utcnow() + timedelta(hours=9)
 now_str = kst_now.strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 위험도 분석 (V0.41)</div>
+<div class="header-title">📊 위험도 분석 (V0.42)</div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} (KST)</div>
 <hr>
 """, unsafe_allow_html=True)
@@ -479,75 +490,82 @@ else:
         return (val - min_risk) / (max_risk - min_risk) * 100
 
     scores = []
-    reasons, positive_factors = [], []
+    
+    # 상세 요인 분석을 위한 변수들
+    risks = []      # 위험 요인 텍스트 리스트
+    opportunities = [] # 긍정 요인 텍스트 리스트
+    
     max_single_risk = 0 
 
     # (1) 국채: 3.5 ~ 5.0
     s_tnx = calc_score(tnx_val, 3.50, 5.00)
     scores.append(s_tnx)
     max_single_risk = max(max_single_risk, s_tnx)
-    if s_tnx >= 50: reasons.append(f"국채금리 부담 ({tnx_val:.2f}%)")
-    elif s_tnx < 20: positive_factors.append(f"국채금리 안정 ({tnx_val:.2f}%)")
+    if s_tnx >= 50: risks.append(f"국채금리 부담 ({tnx_val:.2f}%)")
+    elif s_tnx < 20: opportunities.append(f"국채금리 안정세 ({tnx_val:.2f}%)")
 
     # (2) 유가: 65 ~ 100
     s_oil = calc_score(oil_val, 65.0, 100.0)
     scores.append(s_oil)
     max_single_risk = max(max_single_risk, s_oil)
-    if s_oil >= 50: reasons.append(f"유가 상승세 (${oil_val:.2f})")
-    elif s_oil < 20: positive_factors.append(f"유가 안정세 (${oil_val:.2f})")
+    if s_oil >= 50: risks.append(f"유가 상승 부담 (${oil_val:.2f})")
+    elif s_oil < 20: opportunities.append(f"유가 하향 안정 (${oil_val:.2f})")
 
     # (3) 환율: 1350 ~ 1550
     s_krw = calc_score(krw_val, 1350, 1550)
     scores.append(s_krw)
     max_single_risk = max(max_single_risk, s_krw)
-    if s_krw >= 50: reasons.append(f"고환율 지속 ({krw_val:.0f}원)")
-    elif s_krw < 20: positive_factors.append(f"환율 안정권 ({krw_val:.0f}원)")
+    if s_krw >= 50: risks.append(f"고환율 지속 ({krw_val:.0f}원)")
+    elif s_krw < 20: opportunities.append(f"환율 안정권 ({krw_val:.0f}원)")
 
     # (4) 반도체 낙폭: -1% ~ -10%
     sox_drop = -sox_pct if sox_pct < 0 else 0
     s_sox = calc_score(sox_drop, 1.0, 10.0)
     scores.append(s_sox)
     max_single_risk = max(max_single_risk, s_sox)
-    if s_sox >= 50: reasons.append(f"반도체 지수 급락 ({sox_pct:.2f}%)")
-    elif sox_pct > 0: positive_factors.append(f"반도체 지수 상승 (+{sox_pct:.2f}%)")
+    if s_sox >= 50: risks.append(f"반도체 지수 급락 ({sox_pct:.2f}%)")
+    elif sox_pct > 1.0: opportunities.append(f"반도체 지수 강세 ({sox_pct:+.2f}%)")
 
     # (5) 국내 증시 낙폭: -3.0% ~ -10.0%
     market_drop = -min(kospi_pct, kosdaq_pct) if min(kospi_pct, kosdaq_pct) < 0 else 0
     s_mkt = calc_score(market_drop, 3.0, 10.0)
     scores.append(s_mkt * 0.1) 
     max_single_risk = max(max_single_risk, s_mkt) 
-    if s_mkt > 0: reasons.append(f"증시 폭락 발생 ({min(kospi_pct, kosdaq_pct):.2f}%)")
-    elif kospi_pct > 0: positive_factors.append(f"코스피 상승 (+{kospi_pct:.2f}%)")
+    if s_mkt > 0: risks.append(f"국내 증시 폭락 ({min(kospi_pct, kosdaq_pct):.2f}%)")
+    elif kospi_pct > 0.5: opportunities.append(f"코스피 상승세 ({kospi_pct:+.2f}%)")
 
     # (6,7) 수급
     s_supply, s_futures = 0, 0
     net_buy, fut_net_buy = 0, 0
     if investor_data:
         net_buy = investor_data['kospi_foreigner']
-        if net_buy < 0:
+        if net_buy < -1000:
             s_supply = calc_score(abs(net_buy), 0, 5000)
-            if s_supply >= 50: reasons.append(f"외국인 현물 매도 ({net_buy}억)")
-        elif net_buy > 0: positive_factors.append(f"외국인 현물 순매수 (+{net_buy}억)")
+            if s_supply >= 40: risks.append(f"외국인 현물 매도 ({net_buy}억)")
+        elif net_buy > 1000: opportunities.append(f"외국인 현물 순매수 (+{net_buy}억)")
         
         fut_net_buy = investor_data['futures_foreigner']
-        if fut_net_buy < 0:
+        if fut_net_buy < -2000:
             s_futures = calc_score(abs(fut_net_buy), 0, 10000)
-            if s_futures >= 50: reasons.append(f"외국인 선물 매도 ({fut_net_buy}억)")
-        elif fut_net_buy > 0: positive_factors.append(f"외국인 선물 순매수 (+{fut_net_buy}억)")
+            if s_futures >= 40: risks.append(f"외국인 선물 매도 ({fut_net_buy}억)")
+        elif fut_net_buy > 2000: opportunities.append(f"외국인 선물 순매수 (+{fut_net_buy}억)")
         
         scores.append(s_supply)
         scores.append(s_futures)
-        max_single_risk = max(max_single_risk, s_supply, s_futures)
     else: 
         scores.append(0)
         scores.append(0)
 
-    # (8) [신규] VIX 공포지수: 15 ~ 35 (15 이하는 0점, 35 이상 100점)
+    # (8) VIX
     s_vix = calc_score(vix_val, 15.0, 35.0)
     scores.append(s_vix)
     max_single_risk = max(max_single_risk, s_vix)
-    if s_vix >= 50: reasons.append(f"VIX 공포지수 급등 ({vix_val:.2f})")
-    elif vix_val < 15: positive_factors.append(f"VIX 안정 ({vix_val:.2f})")
+    if s_vix >= 50: risks.append(f"공포심리 확산 (VIX {vix_val:.2f})")
+    elif vix_val < 15: opportunities.append(f"투자심리 안정 (VIX {vix_val:.2f})")
+
+    # (9) 미국 증시 (단순 체크)
+    if nas_pct < -1.5: risks.append(f"나스닥 하락세 ({nas_pct:.2f}%)")
+    elif nas_pct > 1.0: opportunities.append(f"나스닥 상승세 ({nas_pct:+.2f}%)")
 
     final_score = int(sum(scores) / len(scores))
     if max_single_risk >= 80: final_score = max(final_score, 60)
@@ -566,46 +584,61 @@ else:
     risk_bar_html = f"""<div class="risk-wrapper"><div class="risk-pointer" style="left: {display_percent}%; border-color: {pointer_color}; color: {pointer_color};">{final_score}</div><div class="risk-track"><div class="risk-fill" style="width: {display_percent}%;"></div></div><div class="risk-scale"><span class="scale-mark">0</span><span class="scale-mark">20</span><span class="scale-mark">40</span><span class="scale-mark">60</span><span class="scale-mark">80</span><span class="scale-mark">100</span></div></div>"""
     st.markdown(risk_bar_html, unsafe_allow_html=True)
 
-    # 4. 행동 가이드
-    level_text, summary_text, action_text = "", "", ""
-    bad_factors, good_factors = [], []
+    # 4. 행동 가이드 (보고서 생성 로직)
+    level_text = ""
+    summary_text = ""
+    action_text = ""
     
-    if s_tnx >= 40: bad_factors.append("국채금리 부담")
-    if s_krw >= 40: bad_factors.append("고환율")
-    if s_oil >= 40: bad_factors.append("유가 상승")
-    if s_supply >= 40 or s_futures >= 40: bad_factors.append("외인 매도")
-    if s_sox >= 40: bad_factors.append("반도체 약세")
-    if s_vix >= 40: bad_factors.append("공포 심리")
-    if nas_pct <= -2.0: bad_factors.append("미국장 하락")
-    
-    if s_tnx < 20: good_factors.append("금리 안정")
-    if s_krw < 20: good_factors.append("환율 안정")
-    if sox_pct > 1.0: good_factors.append("반도체 급등")
-    if net_buy > 1000 or fut_net_buy > 1000: good_factors.append("외인 매수세")
-    if s_vix < 10: good_factors.append("심리 안정")
-    
-    if final_score >= 60:
-        main_cause = ", ".join(bad_factors[:2])
-        summary_text = f"🚨 <b>{main_cause}</b> 등이 시장을 강하게 압박하고 있습니다."
-        action_text = "주식 비중을 과감히 줄이고 현금을 확보하세요."
-    elif final_score >= 40:
-        main_cause = ", ".join(bad_factors[:2]) if bad_factors else "대외 불확실성"
-        summary_text = f"☁️ <b>{main_cause}</b>으로 인해 시장이 흔들리고 있습니다."
-        action_text = "신규 매수는 자제하고 관망하세요."
-    elif final_score >= 20:
-        if bad_factors and good_factors:
-            summary_text = f"⚖️ <b>{bad_factors[0]}</b> 우려와 <b>{good_factors[0]}</b> 기대가 공존하는 혼조세입니다."
-        else: summary_text = "⛅ 뚜렷한 방향성 없는 변동성 장세입니다."
-        action_text = "조정 시 우량주 위주로 분할 매수하는 전략이 유효합니다."
-    else: 
-        summary_text = "☀️ 시장이 안정을 찾았으며 투자 심리가 양호합니다."
-        action_text = "적극 매수 구간입니다. 주도 섹터 비중을 늘리세요."
+    # 레벨 결정
+    if final_score >= 80: level_text = "Lv.5 위험 [최고조]"
+    elif final_score >= 60: level_text = "Lv.4 위험 [높음]"
+    elif final_score >= 40: level_text = "Lv.3 위험 [경계]"
+    elif final_score >= 20: level_text = "Lv.2 위험 [주의]"
+    else: level_text = "Lv.1 위험 [양호]"
 
-    if final_score >= 80: level_text = "Lv.5 [최고조]"
-    elif final_score >= 60: level_text = "Lv.4 [높음]"
-    elif final_score >= 40: level_text = "Lv.3 [경계]"
-    elif final_score >= 20: level_text = "Lv.2 [주의]"
-    else: level_text = "Lv.1 [양호]"
+    # AI 브리핑 문구 생성
+    # 로직: 위험요인과 긍정요인의 유무에 따라 문장 조합
+    has_risk = len(risks) > 0
+    has_opp = len(opportunities) > 0
+    
+    if final_score >= 40: # 위험 단계
+        if has_risk:
+            # 가장 심각한 위험 2개 추출
+            risk_keywords = [r.split('(')[0].strip() for r in risks[:2]]
+            risk_str = ", ".join(risk_keywords)
+            summary_text = f"🚨 <b>{risk_str}</b> 등이 시장을 강하게 압박하고 있습니다. 보수적인 접근이 필요합니다."
+        else:
+            summary_text = "☁️ 대내외 불확실성으로 인해 시장 변동성이 확대되고 있습니다."
+        action_text = "현금 비중을 늘리고 신규 진입은 자제하세요. 리스크 관리가 최우선입니다."
+        
+    else: # 양호/주의 단계
+        if has_risk and has_opp: # 혼조세
+            risk_kw = risks[0].split('(')[0]
+            opp_kw = opportunities[0].split('(')[0]
+            summary_text = f"⚖️ <b>{risk_kw}</b>에 대한 우려가 있지만, <b>{opp_kw}</b> 등이 시장을 지지하는 혼조세입니다."
+            action_text = "주도주 위주로 압축 대응하고, 조정 시 분할 매수 전략이 유효합니다."
+        elif has_opp: # 호재 우위
+            opp_str = ", ".join([o.split('(')[0] for o in opportunities[:2]])
+            summary_text = f"☀️ <b>{opp_str}</b> 등이 투자 심리를 개선하며 시장 상승을 이끌고 있습니다."
+            action_text = "적극 투자 구간입니다. 반도체 등 주도 섹터 비중을 확대하세요."
+        else: # 특별한거 없음
+            summary_text = "⛅ 큰 악재 없이 시장이 숨 고르기 흐름을 보이고 있습니다."
+            action_text = "개별 종목 장세가 예상됩니다. 실적주 위주로 선별 접근하세요."
+
+    # HTML 리스트 생성
+    risk_html = ""
+    if risks:
+        items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in risks])
+        risk_html = f"<ul style='margin-top:5px; padding-left:20px; color:#d32f2f; font-weight:600;'>{items}</ul>"
+    else:
+        risk_html = "<p style='margin-top:5px; color:#999; padding-left:5px;'>특이 위험 요인이 없습니다.</p>"
+
+    opp_html = ""
+    if opportunities:
+        items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in opportunities])
+        opp_html = f"<ul style='margin-top:5px; padding-left:20px; color:#2e7d32; font-weight:600;'>{items}</ul>"
+    else:
+        opp_html = "<p style='margin-top:5px; color:#999; padding-left:5px;'>뚜렷한 상승 모멘텀이 부족합니다.</p>"
 
     if investor_data and investor_data.get('kospi_foreigner') != 0:
         raw = investor_data['raw_data']
@@ -614,17 +647,7 @@ else:
         investor_content = f"""<div style="display:flex; justify-content:space-between; flex-wrap:wrap;"><span>📉 현물(코스피) 외국인: <b>{k_for}억</b></span><span>📉 선물 외국인: <b>{f_for}억</b></span></div>"""
     else: investor_content = "<span style='color:#999;'>수급 정보 집계 중...</span>"
 
-    if reasons:
-        reason_items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in reasons])
-        reason_content = f"<ul style='margin-top:5px; padding-left:20px; color:#d32f2f; font-weight:600;'>{reason_items}</ul>"
-    else: reason_content = "<p style='margin-top:5px; color:#999;'>특이 위험 요인 없음</p>"
-
-    if positive_factors:
-        positive_items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in positive_factors])
-        positive_content = f"<ul style='margin-top:5px; padding-left:20px; color:#2e7d32; font-weight:600;'>{positive_items}</ul>"
-    else: positive_content = "<p style='margin-top:5px; color:#999;'>특이 호재 요인 없음</p>"
-
-    guide_html = f"""<div class="guide-box"><div class="guide-header">종합 결과: {level_text}</div><div class="guide-section-title">1. 핵심 요약</div><div class="guide-text">{summary_text}</div><div class="guide-section-title">2. 투자 판단</div><div class="guide-text">{action_text}</div><div class="factor-container"><div class="factor-column"><strong style="color:#d32f2f;">🚨 위험 요인 (Risk):</strong>{reason_content}</div><div class="factor-column" style="border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;"><strong style="color:#2e7d32;">✅ 투자 긍정 요인 (Opportunity):</strong>{positive_content}</div></div><div class="investor-box"><strong style="display:block; margin-bottom:5px;">💰 외국인 수급 현황 (추정):</strong>{investor_content}</div></div>"""
+    guide_html = f"""<div class="guide-box"><div class="guide-header">종합 결과: {level_text}</div><div class="guide-section-title">1. 핵심 요약</div><div class="guide-text">{summary_text}</div><div class="guide-section-title">2. 투자 판단</div><div class="guide-text">{action_text}</div><div class="factor-container"><div class="factor-column"><strong style="color:#d32f2f;">🚨 위험 요인 (Risk):</strong>{risk_html}</div><div class="factor-column" style="border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;"><strong style="color:#2e7d32;">✅ 투자 긍정 요인 (Opportunity):</strong>{opp_html}</div></div><div class="investor-box"><strong style="display:block; margin-bottom:5px;">💰 외국인 수급 현황 (추정):</strong>{investor_content}</div></div>"""
     st.markdown(guide_html, unsafe_allow_html=True)
     
     st.markdown("---")
