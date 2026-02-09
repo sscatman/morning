@@ -145,7 +145,10 @@ st.markdown("""
         margin-bottom: 10px;
         color: #000 !important;
     }
-    .guide-box p, .guide-box li, .guide-box span, .guide-box div { color: #111; }
+    /* 박스 내부 요소 색상 강제 지정 (다크모드 대응) */
+    .guide-box p, .guide-box li, .guide-box span, .guide-box div, .guide-box strong { 
+        color: #111 !important; 
+    }
     
     .factor-container {
         display: flex;
@@ -359,7 +362,7 @@ else:
     kospi_val, kospi_diff, kospi_pct = get_info(raw_data['kospi'])
     kosdaq_val, kosdaq_diff, kosdaq_pct = get_info(raw_data['kosdaq'])
 
-    # 1. 가로 스크롤 카드
+    # 1. 가로 스크롤 카드 (들여쓰기 제거 및 한 줄 처리)
     def make_card(title, value, diff, is_percent=False):
         color_class = "plus" if diff >= 0 else "minus"
         sign = "+" if diff >= 0 else ""
@@ -369,55 +372,42 @@ else:
         
         return f'<div class="metric-card"><div class="metric-title">{title}</div><div class="metric-value">{fmt_val}</div><div class="metric-delta {color_class}">{sign}{diff:.2f}</div></div>'
 
-    cards_html = f"""
-    <div class="scroll-container">
-        {make_card("🇺🇸 미국채 10년", tnx_val, tnx_diff, True)}
-        {make_card("🛢️ 유가", oil_val, oil_diff)}
-        {make_card("🇰🇷 환율", krw_val, krw_diff)}
-        {make_card("💾 반도체(SOX)", sox_val, sox_pct, True)}
-        {make_card("📉 코스피", kospi_val, kospi_pct, True)}
-        {make_card("📉 코스닥", kosdaq_val, kosdaq_pct, True)}
-    </div>
-    """
+    # 주의: f-string 내부의 들여쓰기를 모두 제거하여 마크다운 코드 블록 인식을 방지함
+    cards_html = f"""<div class="scroll-container">{make_card("🇺🇸 미국채 10년", tnx_val, tnx_diff, True)}{make_card("🛢️ 유가", oil_val, oil_diff)}{make_card("🇰🇷 환율", krw_val, krw_diff)}{make_card("💾 반도체(SOX)", sox_val, sox_pct, True)}{make_card("📉 코스피", kospi_val, kospi_pct, True)}{make_card("📉 코스닥", kosdaq_val, kosdaq_pct, True)}</div>"""
     st.markdown(cards_html, unsafe_allow_html=True)
+    
     st.caption("↔️ 좌우로 스크롤하여 모든 지표를 확인하세요.")
     st.markdown("---")
 
-    # 2. 종합 위험도 계산 (7개 항목 -> 평균 100점)
+    # 2. 종합 위험도 계산
     def calc_score(val, min_risk, max_risk):
         if val <= min_risk: return 0
         if val >= max_risk: return 100
         return (val - min_risk) / (max_risk - min_risk) * 100
 
     scores = []
-    reasons = [] # 위험요인
-    positive_factors = [] # 투자 긍정 요인
-    
-    # 단독 위험 발생 시 경고 격상을 위한 변수
+    reasons = [] 
+    positive_factors = []
     max_single_risk = 0 
 
-    # (1) 국채 금리: 3.5% ~ 5.0%
     s_tnx = calc_score(tnx_val, 3.50, 5.00)
     scores.append(s_tnx)
     max_single_risk = max(max_single_risk, s_tnx)
     if s_tnx >= 50: reasons.append(f"국채금리 부담 ({tnx_val:.2f}%)")
     elif s_tnx < 20: positive_factors.append(f"국채금리 안정 ({tnx_val:.2f}%)")
 
-    # (2) 유가: $65 ~ $100
     s_oil = calc_score(oil_val, 65.0, 100.0)
     scores.append(s_oil)
     max_single_risk = max(max_single_risk, s_oil)
     if s_oil >= 50: reasons.append(f"유가 상승세 (${oil_val:.2f})")
     elif s_oil < 20: positive_factors.append(f"유가 안정세 (${oil_val:.2f})")
 
-    # (3) 환율: 1350원 ~ 1550원
     s_krw = calc_score(krw_val, 1350, 1550)
     scores.append(s_krw)
     max_single_risk = max(max_single_risk, s_krw)
     if s_krw >= 50: reasons.append(f"고환율 지속 ({krw_val:.0f}원)")
     elif s_krw < 20: positive_factors.append(f"환율 안정권 ({krw_val:.0f}원)")
 
-    # (4) 반도체(SOX) 낙폭: -1% ~ -5% (하락하면 위험, 상승하면 긍정)
     sox_drop = -sox_pct if sox_pct < 0 else 0
     s_sox = calc_score(sox_drop, 1.0, 5.0)
     scores.append(s_sox)
@@ -425,16 +415,14 @@ else:
     if s_sox >= 50: reasons.append(f"반도체 지수 급락 ({sox_pct:.2f}%)")
     elif sox_pct > 0: positive_factors.append(f"반도체 지수 상승 (+{sox_pct:.2f}%)")
 
-    # (5) 국내 증시 낙폭: -3.0% ~ -5.0% (가중치 1/10 적용)
     market_drop = -min(kospi_pct, kosdaq_pct) if min(kospi_pct, kosdaq_pct) < 0 else 0
     s_mkt = calc_score(market_drop, 3.0, 5.0)
-    scores.append(s_mkt * 0.1) # 평균 점수에는 조금만 반영
+    scores.append(s_mkt * 0.1) 
     max_single_risk = max(max_single_risk, s_mkt) 
     if s_mkt > 0: reasons.append(f"증시 폭락 발생 ({min(kospi_pct, kosdaq_pct):.2f}%)")
     elif kospi_pct > 0 and kosdaq_pct > 0: positive_factors.append("국내 증시 동반 상승")
     elif kospi_pct > 0: positive_factors.append(f"코스피 상승 (+{kospi_pct:.2f}%)")
 
-    # (6) 현물 수급: 5000억 매도 기준
     s_supply = 0
     net_buy = 0
     if investor_data:
@@ -448,7 +436,6 @@ else:
         max_single_risk = max(max_single_risk, s_supply)
     else: scores.append(0)
 
-    # (7) 선물 수급: 1조원 매도 기준
     s_futures = 0
     if investor_data:
         fut_net_buy = investor_data['futures_foreigner']
@@ -461,18 +448,12 @@ else:
         max_single_risk = max(max_single_risk, s_futures)
     else: scores.append(0)
 
-    # 평균 점수 산출
     final_score = int(sum(scores) / len(scores))
-    
-    # 단독 위험 보정
-    if max_single_risk >= 80:
-        final_score = max(final_score, 60)
-    elif max_single_risk >= 60:
-        final_score = max(final_score, 40)
-
+    if max_single_risk >= 80: final_score = max(final_score, 60)
+    elif max_single_risk >= 60: final_score = max(final_score, 40)
     display_percent = max(min(final_score, 100), 2)
 
-    # 3. 위험도 바 렌더링
+    # 3. 위험도 바 (들여쓰기 제거)
     st.subheader(f"📊 시장 위험도: {final_score}점")
     
     if final_score >= 80: pointer_color = "#ff3d00"
@@ -481,24 +462,7 @@ else:
     elif final_score >= 20: pointer_color = "#00e676"
     else: pointer_color = "#2979ff"
 
-    risk_bar_html = f"""
-    <div class="risk-wrapper">
-        <div class="risk-pointer" style="left: {display_percent}%; border-color: {pointer_color}; color: {pointer_color};">
-            {final_score}
-        </div>
-        <div class="risk-track">
-            <div class="risk-fill" style="width: {display_percent}%;"></div>
-        </div>
-        <div class="risk-scale">
-            <span class="scale-mark">0</span>
-            <span class="scale-mark">20</span>
-            <span class="scale-mark">40</span>
-            <span class="scale-mark">60</span>
-            <span class="scale-mark">80</span>
-            <span class="scale-mark">100</span>
-        </div>
-    </div>
-    """
+    risk_bar_html = f"""<div class="risk-wrapper"><div class="risk-pointer" style="left: {display_percent}%; border-color: {pointer_color}; color: {pointer_color};">{final_score}</div><div class="risk-track"><div class="risk-fill" style="width: {display_percent}%;"></div></div><div class="risk-scale"><span class="scale-mark">0</span><span class="scale-mark">20</span><span class="scale-mark">40</span><span class="scale-mark">60</span><span class="scale-mark">80</span><span class="scale-mark">100</span></div></div>"""
     st.markdown(risk_bar_html, unsafe_allow_html=True)
 
     # 4. 행동 가이드
@@ -531,16 +495,10 @@ else:
         raw = investor_data['raw_data']
         k_for = raw.get('kospi_foreigner', '0')
         f_for = raw.get('futures_foreigner', '0')
-        investor_content = f"""
-        <div style="display:flex; justify-content:space-between; flex-wrap:wrap;">
-            <span>📉 현물(코스피) 외국인: <b>{k_for}억</b></span>
-            <span>📉 선물 외국인: <b>{f_for}억</b></span>
-        </div>
-        """
+        investor_content = f"""<div style="display:flex; justify-content:space-between; flex-wrap:wrap;"><span>📉 현물(코스피) 외국인: <b>{k_for}억</b></span><span>📉 선물 외국인: <b>{f_for}억</b></span></div>"""
     else:
         investor_content = "<span style='color:#999;'>수급 정보 집계 중... (장 시작 전이거나 데이터 없음)</span>"
 
-    # 요인 리스트 HTML 생성
     if reasons:
         reason_items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in reasons])
         reason_content = f"<ul style='margin-top:5px; padding-left:20px; color:#d32f2f; font-weight:600;'>{reason_items}</ul>"
@@ -553,28 +511,8 @@ else:
     else:
         positive_content = "<p style='margin-top:5px; color:#999;'>뚜렷한 호재가 없습니다.</p>"
 
-    guide_html = f"""
-    <div class="guide-box" style="background-color: {guide_bg};">
-        <div class="guide-header">👉 현재 상태: {level_text}</div>
-        <p style="font-weight:bold; font-size:16px; margin-bottom:15px;">{guide_msg}</p>
-        
-        <div class="factor-container">
-            <div class="factor-column">
-                <strong>🚨 위험 요인 (Risk):</strong>
-                {reason_content}
-            </div>
-            <div class="factor-column" style="border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
-                <strong>✅ 투자 긍정 요인 (Opportunity):</strong>
-                {positive_content}
-            </div>
-        </div>
-
-        <div class="investor-box">
-            <strong style="display:block; margin-bottom:5px;">💰 외국인 수급 현황 (추정):</strong>
-            {investor_content}
-        </div>
-    </div>
-    """
+    # [중요] HTML 들여쓰기 제거 및 한 줄 처리로 코드 블록 오류 방지
+    guide_html = f"""<div class="guide-box" style="background-color: {guide_bg};"><div class="guide-header">👉 현재 상태: {level_text}</div><p style="font-weight:bold; font-size:16px; margin-bottom:15px;">{guide_msg}</p><div class="factor-container"><div class="factor-column"><strong>🚨 위험 요인 (Risk):</strong>{reason_content}</div><div class="factor-column" style="border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;"><strong>✅ 투자 긍정 요인 (Opportunity):</strong>{positive_content}</div></div><div class="investor-box"><strong style="display:block; margin-bottom:5px;">💰 외국인 수급 현황 (추정):</strong>{investor_content}</div></div>"""
     st.markdown(guide_html, unsafe_allow_html=True)
     
     st.markdown("---")
@@ -583,23 +521,13 @@ else:
         st.markdown("### 🇺🇸 연준(Fed) & 글로벌 브리핑")
         if news_data and news_data['fed']:
             for item in news_data['fed']:
-                st.markdown(f"""
-                <div class="news-item">
-                    <span class="fed-badge">Fed/금리</span>
-                    <a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a>
-                    <div class="news-meta">{item['summary']}</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"""<div class="news-item"><span class="fed-badge">Fed/금리</span><a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a><div class="news-meta">{item['summary']}</div></div>""", unsafe_allow_html=True)
         else: st.info("관련 주요 뉴스가 없습니다.")
     with c2:
         st.markdown("### 🇰🇷 국내 증시 주요 체크")
         if news_data and news_data['korea']:
             for item in news_data['korea']:
-                st.markdown(f"""
-                <div class="news-item">
-                    <a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"""<div class="news-item"><a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a></div>""", unsafe_allow_html=True)
         else: st.info("국내 주요 뉴스를 불러오지 못했습니다.")
 
     st.markdown("---")
