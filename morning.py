@@ -15,8 +15,8 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V1.5", 
-    page_icon="🦅",
+    page_title="위험도 분석 (V0.48)", 
+    page_icon="📊",
     layout="wide"
 )
 
@@ -57,7 +57,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ Eagle Eye V1.5")
+    st.header("⚙️ 설정")
     api_key_input = MY_GEMINI_API_KEY if MY_GEMINI_API_KEY else ""
     if not api_key_input:
         api_key_input = st.text_input("🔑 Gemini API 키 입력", type="password", placeholder="키를 넣으면 AI 분석이 활성화됩니다.")
@@ -189,7 +189,7 @@ def get_ai_portfolio_analysis(api_key, m, inv, score):
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">🦅 Eagle Eye V1.5</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.48)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv = get_market_investors()
@@ -224,7 +224,7 @@ if data:
     # 섹션 2: 대체 자산 & 공포지수
     st.subheader("🛡️ 대체 자산 & 공포지수")
     c7, c8, c9, c10 = st.columns(4)
-    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 10000, 'stock', '$') # 10000으로 수정
+    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 10000, 'stock', '$') # 10000 유지
     with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 150, 'stock', '$') 
     with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 200000, 'stock', '$') 
     with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 50, 'risk') 
