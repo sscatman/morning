@@ -15,8 +15,8 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V1.5", 
-    page_icon="🦅",
+    page_title="위험도 분석 (V0.47)", 
+    page_icon="📊",
     layout="wide"
 )
 
@@ -57,7 +57,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ Eagle Eye V1.5")
+    st.header("⚙️ 설정")
     api_key_input = MY_GEMINI_API_KEY if MY_GEMINI_API_KEY else ""
     if not api_key_input:
         api_key_input = st.text_input("🔑 Gemini API 키 입력", type="password", placeholder="키를 넣으면 AI 분석이 활성화됩니다.")
@@ -187,21 +187,21 @@ def get_ai_portfolio_analysis(api_key, m, inv, score):
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">🦅 Eagle Eye V1.5</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.47)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv = get_market_investors()
 news = get_financial_news()
 
 if data:
-    # --- 게이지 UI ---
+    # --- 게이지 UI 함수 ---
     def mini_gauge(title, d, min_v, max_v, mode='risk', unit=''):
         val = d['val']
         pct = max(0, min(100, (val - min_v) / (max_v - min_v) * 100))
         grad = "linear-gradient(90deg, #4CAF50 0%, #FFEB3B 50%, #F44336 100%)" if mode=='risk' else "linear-gradient(90deg, #2196F3 0%, #EEEEEE 50%, #F44336 100%)"
         st.markdown(f"""<div class="mini-gauge-container"><div class="mini-gauge-title"><span>{title}</span><span>{val:,.2f}{unit} ({d['pct']:+.2f}%)</span></div><div class="mini-gauge-track" style="background:{grad}"><div class="mini-gauge-pointer" style="left:{pct}%"></div></div><div class="mini-gauge-labels"><span>{min_v}</span><span>{max_v}</span></div></div>""", unsafe_allow_html=True)
 
-    # 섹션 1: 주요 지표 현황 (통합)
+    # 섹션 1: 주요 지표 현황
     st.subheader("📈 주요 지표 현황")
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -219,12 +219,12 @@ if data:
 
     st.markdown("---")
     
-    # 섹션 2: 대체 자산 & 공포지수 (수정됨)
+    # 섹션 2: 대체 자산 & 공포지수
     st.subheader("🛡️ 대체 자산 & 공포지수")
     c7, c8, c9, c10 = st.columns(4)
     with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 5000, 'stock', '$') # 2000~5000
     with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 150, 'stock', '$') # 20~150
-    with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 200000, 'stock', '$') # 0~200,000 (20,000은 너무 낮아 200,000으로 보정)
+    with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 200000, 'stock', '$') # 0~200,000
     with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 50, 'risk') # 10~50
 
     # --- 위험도 산정 ---
