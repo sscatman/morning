@@ -10,7 +10,7 @@ import json
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.45)", # 버전 업데이트
+    page_title="위험도 분석 (V0.46)", # 버전 업데이트
     page_icon="📊",
     layout="wide"
 )
@@ -331,14 +331,14 @@ def get_financial_news():
     except: pass
     return news_data
 
-# --- [수정] 함수: 제미나이 AI 브리핑 생성 (모델 우회 및 에러 핸들링) ---
+# --- [수정] 함수: 제미나이 AI 브리핑 생성 (모델 우회 및 에러 핸들링 강화) ---
 def get_gemini_briefing(api_key, market_data):
-    # 시도할 모델 목록 (순차적 시도)
+    # 시도할 모델 목록 (안정적인 모델 위주로 재구성)
     models_to_try = [
         "gemini-1.5-flash", 
-        "gemini-2.0-flash", 
         "gemini-1.5-pro",
-        "gemini-1.5-flash-latest"
+        "gemini-1.0-pro",
+        "gemini-pro"
     ]
     
     headers = {'Content-Type': 'application/json'}
@@ -381,21 +381,15 @@ def get_gemini_briefing(api_key, market_data):
             
             if response.status_code == 200:
                 result = response.json()
-                # 응답 검증
                 if 'candidates' in result and result['candidates']:
                     text_res = result['candidates'][0]['content']['parts'][0]['text']
-                    
-                    # JSON 객체만 추출
                     match = re.search(r'\{.*\}', text_res, re.DOTALL)
                     if match:
                         json_str = match.group(0)
                         return json.loads(json_str)
-            elif response.status_code == 404:
-                last_error = f"{model_name}: 404 Not Found"
-                continue # 다음 모델 시도
             else:
-                last_error = f"{model_name}: {response.status_code} Error"
-                continue # 다음 모델 시도
+                last_error = f"{model_name}: {response.status_code}"
+                continue
                 
         except Exception as e:
             last_error = f"System Error: {str(e)}"
@@ -427,7 +421,7 @@ kst_now = datetime.utcnow() + timedelta(hours=9)
 now_str = kst_now.strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 위험도 분석 (V0.45)</div>
+<div class="header-title">📊 위험도 분석 (V0.46)</div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} (KST)</div>
 <hr>
 """, unsafe_allow_html=True)
@@ -624,11 +618,9 @@ else:
         summary_text = f"🤖 <b>AI 분석:</b> {ai_result.get('summary', '분석 중...')}"
         action_text = f"💡 <b>투자 조언:</b> {ai_result.get('action', '데이터 분석 중...')}"
     else:
-        # 에러 발생 시 사용자에게 알림
         if ai_result and "error" in ai_result:
             st.error(f"AI 분석 실패: {ai_result['error']}")
             
-        # 기존 로직 (Fallback)
         has_risk = len(risks) > 0
         if final_score >= 40:
             risk_str = ", ".join([r.split('(')[0].strip() for r in risks[:2]]) if risks else "불확실성"
