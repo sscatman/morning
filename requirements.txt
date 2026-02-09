@@ -1,3 +1,3 @@
 ﻿pandas openpyxl msoffcrypto-tool pyinstaller
-streamlit yfinance pandas
+streamlit yfinance pandas lxml requests
 
