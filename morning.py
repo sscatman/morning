@@ -10,7 +10,7 @@ import json
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.44)", # 버전 업데이트
+    page_title="위험도 분석 (V0.45)", # 버전 업데이트
     page_icon="📊",
     layout="wide"
 )
@@ -331,9 +331,16 @@ def get_financial_news():
     except: pass
     return news_data
 
-# --- [수정] 함수: 제미나이 AI 브리핑 생성 (에러 핸들링 강화) ---
+# --- [수정] 함수: 제미나이 AI 브리핑 생성 (모델 우회 및 에러 핸들링) ---
 def get_gemini_briefing(api_key, market_data):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # 시도할 모델 목록 (순차적 시도)
+    models_to_try = [
+        "gemini-1.5-flash", 
+        "gemini-2.0-flash", 
+        "gemini-1.5-pro",
+        "gemini-1.5-flash-latest"
+    ]
+    
     headers = {'Content-Type': 'application/json'}
     
     prompt = f"""
@@ -365,23 +372,36 @@ def get_gemini_briefing(api_key, market_data):
         "contents": [{"parts": [{"text": prompt}]}]
     }
     
-    try:
-        response = requests.post(url, headers=headers, json=data, timeout=10)
-        if response.status_code == 200:
-            result = response.json()
-            text_res = result['candidates'][0]['content']['parts'][0]['text']
+    last_error = ""
+    
+    for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        try:
+            response = requests.post(url, headers=headers, json=data, timeout=8)
             
-            # [강화] 정규표현식으로 JSON 객체만 추출 (사족 제거)
-            match = re.search(r'\{.*\}', text_res, re.DOTALL)
-            if match:
-                json_str = match.group(0)
-                return json.loads(json_str)
+            if response.status_code == 200:
+                result = response.json()
+                # 응답 검증
+                if 'candidates' in result and result['candidates']:
+                    text_res = result['candidates'][0]['content']['parts'][0]['text']
+                    
+                    # JSON 객체만 추출
+                    match = re.search(r'\{.*\}', text_res, re.DOTALL)
+                    if match:
+                        json_str = match.group(0)
+                        return json.loads(json_str)
+            elif response.status_code == 404:
+                last_error = f"{model_name}: 404 Not Found"
+                continue # 다음 모델 시도
             else:
-                return {"error": "AI 응답 파싱 실패"}
-        else:
-            return {"error": f"API 호출 오류: {response.status_code} ({response.text[:50]}...)"}
-    except Exception as e:
-        return {"error": f"시스템 오류: {str(e)}"}
+                last_error = f"{model_name}: {response.status_code} Error"
+                continue # 다음 모델 시도
+                
+        except Exception as e:
+            last_error = f"System Error: {str(e)}"
+            continue
+
+    return {"error": f"모든 모델 시도 실패. (Last: {last_error})"}
 
 # --- 함수: 데이터 가져오기 ---
 def get_all_data():
@@ -407,7 +427,7 @@ kst_now = datetime.utcnow() + timedelta(hours=9)
 now_str = kst_now.strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 위험도 분석 (V0.44)</div>
+<div class="header-title">📊 위험도 분석 (V0.45)</div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} (KST)</div>
 <hr>
 """, unsafe_allow_html=True)
