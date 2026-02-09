@@ -379,14 +379,13 @@ else:
     kospi_val, kospi_diff, kospi_pct = get_info(raw_data['kospi'])
     kosdaq_val, kosdaq_diff, kosdaq_pct = get_info(raw_data['kosdaq'])
 
-    # 1. 가로 스크롤 카드
+    # 1. 가로 스크롤 카드 (한 줄 처리로 오류 방지)
     def make_card(title, value, diff, is_percent=False):
         color_class = "plus" if diff >= 0 else "minus"
         sign = "+" if diff >= 0 else ""
         fmt_val = f"{value:.2f}%" if is_percent else f"{value:.2f}"
         if title == "🇰🇷 환율": fmt_val = f"{value:.0f}원"
         elif title == "🛢️ 유가": fmt_val = f"${value:.2f}"
-        
         return f'<div class="metric-card"><div class="metric-title">{title}</div><div class="metric-value">{fmt_val}</div><div class="metric-delta {color_class}">{sign}{diff:.2f}</div></div>'
 
     cards_html = f"""<div class="scroll-container">{make_card("🇺🇸 미국채 10년", tnx_val, tnx_diff, True)}{make_card("🛢️ 유가", oil_val, oil_diff)}{make_card("🇰🇷 환율", krw_val, krw_diff)}{make_card("💾 반도체(SOX)", sox_val, sox_pct, True)}{make_card("📉 코스피", kospi_val, kospi_pct, True)}{make_card("📉 코스닥", kosdaq_val, kosdaq_pct, True)}</div>"""
@@ -472,7 +471,7 @@ else:
     elif max_single_risk >= 60: final_score = max(final_score, 40)
     display_percent = max(min(final_score, 100), 2)
 
-    # 3. 위험도 바
+    # 3. 위험도 바 (한 줄 처리로 오류 방지)
     st.subheader(f"📊 시장 위험도: {final_score}점")
     
     if final_score >= 80: pointer_color = "#ff3d00"
@@ -484,12 +483,11 @@ else:
     risk_bar_html = f"""<div class="risk-wrapper"><div class="risk-pointer" style="left: {display_percent}%; border-color: {pointer_color}; color: {pointer_color};">{final_score}</div><div class="risk-track"><div class="risk-fill" style="width: {display_percent}%;"></div></div><div class="risk-scale"><span class="scale-mark">0</span><span class="scale-mark">20</span><span class="scale-mark">40</span><span class="scale-mark">60</span><span class="scale-mark">80</span><span class="scale-mark">100</span></div></div>"""
     st.markdown(risk_bar_html, unsafe_allow_html=True)
 
-    # 4. 행동 가이드 생성 (AI 자동 브리핑 로직)
+    # 4. 행동 가이드 생성
     level_text = ""
-    summary_text = "" # 핵심 요약 (자동 생성)
-    action_text = ""  # 투자 판단
+    summary_text = "" 
+    action_text = ""  
 
-    # (1) 요약 멘트 생성 로직
     bad_factors = []
     good_factors = []
     
@@ -518,7 +516,7 @@ else:
         else:
             summary_text = "⛅ 큰 악재는 없으나 뚜렷한 상승 동력도 부족한 변동성 장세입니다."
         action_text = "몰빵은 금물입니다. 조정 시마다 우량주 위주로 분할 매수하는 전략이 유효합니다."
-    else: # 20점 미만 (좋음)
+    else: 
         if good_factors:
             main_good = ", ".join(good_factors[:2])
             summary_text = f"☀️ <b>{main_good}</b> 등이 시장 상승을 주도하고 있습니다. 투자 심리가 매우 양호합니다."
@@ -526,14 +524,12 @@ else:
             summary_text = "☀️ 악재가 해소되며 시장이 안정을 찾았습니다. 전반적으로 매수세가 유입되고 있습니다."
         action_text = "적극 매수 구간입니다. 주도 섹터(반도체 등) 비중을 늘려 수익을 극대화하세요."
 
-    # 레벨 텍스트 설정
     if final_score >= 80: level_text = "Lv.5 위험도 [최고조]"
     elif final_score >= 60: level_text = "Lv.4 위험도 [높음]"
     elif final_score >= 40: level_text = "Lv.3 위험도 [경계]"
     elif final_score >= 20: level_text = "Lv.2 위험도 [주의]"
     else: level_text = "Lv.1 위험도 [양호]"
 
-    # 투자자 정보 HTML
     if investor_data and investor_data.get('kospi_foreigner') != 0:
         raw = investor_data['raw_data']
         k_for = raw.get('kospi_foreigner', '0')
@@ -542,45 +538,18 @@ else:
     else:
         investor_content = "<span style='color:#999;'>수급 정보 집계 중... (장 시작 전이거나 데이터 없음)</span>"
 
-    # 리스트 HTML
     if reasons:
         reason_items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in reasons])
         reason_content = f"<ul style='margin-top:5px; padding-left:20px; color:#d32f2f; font-weight:600;'>{reason_items}</ul>"
-    else: reason_content = "<p style='margin-top:5px; color:#999;'>특이 위험 요인 없음</p>"
+    else: reason_content = "<p style='margin-top:5px; color:#999;'>발견된 위험 요인이 없습니다.</p>"
 
     if positive_factors:
         positive_items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in positive_factors])
         positive_content = f"<ul style='margin-top:5px; padding-left:20px; color:#2e7d32; font-weight:600;'>{positive_items}</ul>"
-    else: positive_content = "<p style='margin-top:5px; color:#999;'>특이 호재 요인 없음</p>"
+    else: positive_content = "<p style='margin-top:5px; color:#999;'>뚜렷한 호재가 없습니다.</p>"
 
-    # [최종] 종합 결과 보고서 HTML
-    guide_html = f"""
-    <div class="guide-box">
-        <div class="guide-header">종합 결과: {level_text}</div>
-        
-        <div class="guide-section-title">1. 핵심 요약</div>
-        <div class="guide-text">{summary_text}</div>
-        
-        <div class="guide-section-title">2. 투자 판단</div>
-        <div class="guide-text">{action_text}</div>
-        
-        <div class="factor-container">
-            <div class="factor-column">
-                <strong style="color:#d32f2f;">🚨 위험 요인 (Risk):</strong>
-                {reason_content}
-            </div>
-            <div class="factor-column" style="border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
-                <strong style="color:#2e7d32;">✅ 투자 긍정 요인 (Opportunity):</strong>
-                {positive_content}
-            </div>
-        </div>
-
-        <div class="investor-box">
-            <strong style="display:block; margin-bottom:5px;">💰 외국인 수급 현황 (추정):</strong>
-            {investor_content}
-        </div>
-    </div>
-    """
+    # [수정 완료] HTML 코드 한 줄 처리로 깨짐 방지
+    guide_html = f"""<div class="guide-box"><div class="guide-header">종합 결과: {level_text}</div><div class="guide-section-title">1. 핵심 요약</div><div class="guide-text">{summary_text}</div><div class="guide-section-title">2. 투자 판단</div><div class="guide-text">{action_text}</div><div class="factor-container"><div class="factor-column"><strong style="color:#d32f2f;">🚨 위험 요인 (Risk):</strong>{reason_content}</div><div class="factor-column" style="border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;"><strong style="color:#2e7d32;">✅ 투자 긍정 요인 (Opportunity):</strong>{positive_content}</div></div><div class="investor-box"><strong style="display:block; margin-bottom:5px;">💰 외국인 수급 현황 (추정):</strong>{investor_content}</div></div>"""
     st.markdown(guide_html, unsafe_allow_html=True)
     
     st.markdown("---")
