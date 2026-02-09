@@ -15,8 +15,8 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.49", 
-    page_icon="🦅",
+    page_title="위험도 분석 V0.50", 
+    page_icon="📊",
     layout="wide"
 )
 
@@ -57,7 +57,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ Eagle Eye V0.49")
+    st.header("⚙️ 위험도 분석 V0.50")
     api_key_input = MY_GEMINI_API_KEY if MY_GEMINI_API_KEY else ""
     if not api_key_input:
         api_key_input = st.text_input("🔑 Gemini API 키 입력", type="password", placeholder="키를 넣으면 AI 분석이 활성화됩니다.")
@@ -75,7 +75,6 @@ def get_weather(city="Daejeon"):
         return res.text.strip() if res.status_code == 200 else "N/A"
     except: return "N/A"
 
-# --- [수정] 수급 정보 크롤링 (지수별 전용 페이지 타겟팅) ---
 def get_market_investors():
     headers = { 'User-Agent': 'Mozilla/5.0' }
     result = { 
@@ -86,48 +85,22 @@ def get_market_investors():
     
     def parse_amount(text):
         try: 
-            # 억 단위 콤마 제거 및 정수 변환
             text = re.sub(r'[^\d\-]', '', text)
             return int(text) if text else 0
         except: return 0
 
     try:
-        # 1. 코스피 수급 (네이버 금융 코스피 메인)
         url_kospi = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
         res_kospi = requests.get(url_kospi, headers=headers, timeout=5)
         soup_kospi = BeautifulSoup(res_kospi.content.decode('euc-kr', 'replace'), 'html.parser')
         
-        # dl.lst_kos_info -> dd (개인, 외국인, 기관 순서)
         kospi_items = soup_kospi.select('.lst_kos_info dd span')
         if len(kospi_items) >= 2:
-            # 보통 0:개인, 1:외국인, 2:기관
             val_str = kospi_items[1].text.strip()
             result["kospi_foreigner"] = parse_amount(val_str)
             result["raw_data"]["kospi_foreigner"] = val_str
-
-        # 2. 선물 수급 (네이버 금융 선물 메인)
-        # 선물 페이지는 구조가 다를 수 있어 메인 페이지의 리스트를 활용하는 것이 안정적일 수 있으나
-        # 여기서는 선물 전용 데이터를 찾기 위해 sise_main을 파싱 시도
-        url_main = "https://finance.naver.com/sise/"
-        res_main = requests.get(url_main, headers=headers, timeout=5)
-        soup_main = BeautifulSoup(res_main.content.decode('euc-kr', 'replace'), 'html.parser')
-        
-        # '선물' 키워드가 있는 테이블이나 리스트 찾기
-        # 보통 #tab_sel1_deal_trend > table 구조 사용
-        # 간편하게: 메인 페이지 내 선물 외국인 수치 직접 찾기 어려우므로
-        # 투자자별 매매동향 페이지 상세 파싱 시도
-        url_investor = "https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate=" + datetime.now().strftime("%Y%m%d") + "&sosok=00"
-        # 위 URL은 복잡하므로, 다시 메인페이지의 전광판 데이터 활용
-        
-        # 대안: 크롤링이 까다로운 선물 데이터는 값이 없으면 0으로 두되, 
-        # 코스피 데이터라도 확실하게 보여주는 전략
-        
-        # 선물 데이터 보강 (메인 페이지 파싱 재시도)
-        # HTML 구조상 선물 외국인은 특정 ID가 없음. 
-        # 따라서 수급은 코스피 위주로 확실히 하고, 선물은 보조로 둠.
         
     except Exception as e:
-        # print(f"Error scraping investors: {e}")
         pass
         
     return result
@@ -155,8 +128,7 @@ def get_all_data():
         "tnx": "^TNX", "oil": "CL=F", "krw": "KRW=X",
         "nas": "^IXIC", "sp5": "^GSPC", "sox": "^SOX",
         "kospi": "^KS11", "kosdaq": "^KQ11",
-        "gold": "GC=F", "silver": "SI=F", "btc": "BTC-USD", "vix": "^VIX",
-        "laes": "LAES" 
+        "gold": "GC=F", "silver": "SI=F", "btc": "BTC-USD", "vix": "^VIX"
     }
     data = {}
     try:
@@ -171,7 +143,7 @@ def get_all_data():
         return data, None
     except Exception as e: return None, e
 
-# --- 기본 분석 알고리즘 (API 키 없을 때 실행) ---
+# --- 기본 분석 알고리즘 (API 키 없을 때 실행 - 특정 종목 제거됨) ---
 def get_basic_report(m, inv, score):
     res = {"headline": "", "portfolio": ""}
     
@@ -181,30 +153,30 @@ def get_basic_report(m, inv, score):
     else: res["headline"] = "☀️ 시장 에너지가 매우 좋습니다. 적극적인 투자 기회입니다."
 
     lines = []
-    # KODEX 반도체
-    if m['sox']['pct'] > 1: lines.append("✅ <b>KODEX 반도체:</b> 반도체 지수 강세로 추가 상승 기대")
-    else: lines.append("⏺ <b>KODEX 반도체:</b> 시장 흐름 주시하며 비중 유지")
+    # 반도체 섹터 전반
+    if m['sox']['pct'] > 1: lines.append("✅ <b>반도체 섹터:</b> 필라델피아 반도체 강세로 투자 심리 호전, 비중 확대 유효")
+    elif m['sox']['pct'] < -2: lines.append("⚠️ <b>반도체 섹터:</b> 지수 낙폭 과대로 인한 변동성 주의, 보수적 접근")
+    else: lines.append("⏺ <b>반도체 섹터:</b> 뚜렷한 방향성 없음, 시장 주도주 흐름 주시")
 
-    # KODEX 코스닥 150
-    if m['kosdaq']['pct'] > 0: lines.append("✅ <b>KODEX 코스닥 150:</b> 국내 중소형주 온기 확산 중")
-    else: lines.append("⚠️ <b>KODEX 코스닥 150:</b> 코스닥 변동성 확대에 따른 주의 요망")
+    # 국내 시장 전반
+    if m['kosdaq']['pct'] > 0: lines.append("✅ <b>국내 시장:</b> 코스닥 및 중소형주 온기 확산 중, 선별 매수 고려")
+    else: lines.append("⚠️ <b>국내 시장:</b> 지수 하락 압력 존재, 현금 비중 관리 필요")
 
-    # 아이온큐
-    if m['nas']['pct'] > 0: lines.append("🚀 <b>아이온큐(IONQ):</b> 미 기술주 상승 랠리 편승 중")
-    else: lines.append("⏺ <b>아이온큐(IONQ):</b> 성장주 밸류에이션 부담 체크 필요")
+    # 미국 기술주
+    if m['nas']['pct'] > 0: lines.append("🚀 <b>미국 기술주:</b> 성장주 위주의 상승 랠리 지속, 추세 추종 전략")
+    else: lines.append("⏺ <b>미국 기술주:</b> 금리 부담에 따른 기술주 숨고르기, 분할 매수 대응")
 
-    # 실스크(LAES)
-    if m['laes']['pct'] > 0: lines.append("🟡 <b>실스크(LAES):</b> 개별 모멘텀 지속 여부 확인 필요")
-    else: lines.append("⏺ <b>실스크(LAES):</b> 하방 경직성 테스트 구간")
+    # 대체 자산
+    if m['gold']['pct'] > 0.5 or m['vix']['val'] > 20: lines.append("🟡 <b>대체 자산:</b> 불확실성 대비 안전자산(금) 및 헷지 수단 관심 필요")
 
     res["portfolio"] = "<br>".join(lines)
     return res
 
-# --- AI 분석 함수 ---
+# --- AI 분석 함수 (특정 종목 제거) ---
 def get_ai_portfolio_analysis(api_key, m, inv, score):
     if not api_key: return None
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    prompt = f"""당신은 전문 자산운용가입니다. [보유종목: KODEX반도체, KODEX코스닥150, 아이온큐(IONQ), 실스크(LAES)]에 대해 위험도 {score}점인 현재 시장 상황을 분석하여 전략을 JSON 형식으로 짜주세요."""
+    prompt = f"""당신은 전문 자산운용가입니다. 위험도 {score}점인 현재 시장 상황(매크로, 지수, 수급, 심리 등)을 종합적으로 분석하여 전반적인 주식 투자 운영 가이드를 JSON 형식으로 짜주세요."""
     try:
         res = requests.post(url, headers={'Content-Type': 'application/json'}, json={"contents": [{"parts": [{"text": prompt + str(m)}]}]}, timeout=10)
         if res.status_code == 200:
@@ -217,7 +189,7 @@ def get_ai_portfolio_analysis(api_key, m, inv, score):
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">🦅 Eagle Eye V0.49</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.50)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv = get_market_investors()
@@ -237,7 +209,7 @@ if data:
     with c1:
         mini_gauge("🇺🇸 국채 10년", data['tnx'], 3.0, 5.5, 'risk', '%')
         mini_gauge("🇺🇸 나스닥", data['nas'], 15000, 40000, 'stock') 
-        mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 8000, 'stock') # 기준 변경 8000
+        mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 8000, 'stock')
     with c2:
         mini_gauge("🛢️ WTI 유가", data['oil'], 60, 100, 'risk', '$')
         mini_gauge("🇺🇸 S&P 500", data['sp5'], 4500, 10000, 'stock')
@@ -246,19 +218,12 @@ if data:
         mini_gauge("🇰🇷 환율", data['krw'], 1300, 1550, 'risk', '원')
         mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 10000, 'stock') 
         
-        # 수급 정보 표시 로직 수정 (데이터 없으면 0 대신 '장 마감/집계중' 표시 고민이나, 일단 값 표시에 집중)
-        k_val = inv['kospi_foreigner']
-        k_str = f"{k_val}억" if k_val != 0 else "집계 중"
-        k_color = "#d62728" if k_val > 0 else "#1f77b4" if k_val < 0 else "#666"
-        
-        # 선물은 크롤링 난이도로 인해 값이 없으면 표시 생략하거나 0 처리
-        f_val = inv['futures_foreigner']
-        f_str = f"{f_val}억" if f_val != 0 else "-"
-        
+        k_val = inv['raw_data'].get('kospi_foreigner', '0')
+        f_val = inv['raw_data'].get('futures_foreigner', '0')
         st.markdown(f"""
         <div style="background:#f9f9f9; padding:15px; border-radius:10px; border:1px solid #ddd; margin-top:5px;">
             <p style="margin:0; font-size:14px; color:#333;">💰 <b>외국인 수급 (코스피)</b></p>
-            <p style="margin:5px 0 0 0; font-size:18px; font-weight:bold; color:{k_color};">{k_str}</p>
+            <p style="margin:5px 0 0 0; font-size:18px; font-weight:bold; color:#1565c0;">{k_val}억</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -285,7 +250,7 @@ if data:
     
     st.markdown(f"""
     <div class="guide-box">
-        <div class="guide-header">🦅 {mode_label} 브리핑</div>
+        <div class="guide-header">📊 {mode_label} 브리핑</div>
         <div class="guide-section-title">1. 시장 총평</div>
         <div class="guide-text"><b>{report.get('headline', '분석 실패')}</b></div>
         <div class="guide-section-title">2. 주식 운영 가이드</div>
