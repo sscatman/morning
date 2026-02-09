@@ -9,13 +9,15 @@ import time
 import json 
 
 # =========================================================
-# 🔑 사장님 전용 설정 (API 키가 없어도 프로그램은 작동합니다)
+# 🔑 사장님 전용 설정
+# 1. 아래 따옴표 안에 발급받은 API 키를 붙여넣으세요.
+# 2. 예시: MY_GEMINI_API_KEY = "AIzaSy..."
 MY_GEMINI_API_KEY = ""  
 # =========================================================
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.51", 
+    page_title="위험도 분석 V0.52", 
     page_icon="📊",
     layout="wide"
 )
@@ -61,15 +63,22 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 위험도 분석 V0.51")
-    api_key_input = MY_GEMINI_API_KEY if MY_GEMINI_API_KEY else ""
+    st.header("⚙️ 위험도 분석 V0.52")
+    
+    # API 키 입력 로직 강화
+    api_key_input = MY_GEMINI_API_KEY.strip() if MY_GEMINI_API_KEY else ""
     if not api_key_input:
-        api_key_input = st.text_input("🔑 Gemini API 키 입력", type="password", placeholder="키를 넣으면 AI 분석이 활성화됩니다.")
+        api_key_input = st.text_input("🔑 Gemini API 키 입력", type="password", placeholder="여기에 키를 입력하세요").strip()
+    else:
+        st.success("✅ API 키가 코드에 적용됨")
     
     if st.button('🔄 데이터 새로고침'):
         st.rerun()
-    if api_key_input: st.success("✅ AI 모드 작동 중")
-    else: st.info("ℹ️ 기본 분석 엔진 작동 중")
+    
+    if api_key_input:
+        st.caption("AI 분석 모드가 활성화되었습니다.")
+    else:
+        st.info("ℹ️ 키가 없으면 기본 분석이 실행됩니다.")
 
 # --- 데이터 수집 함수 ---
 def get_weather(city="Daejeon"):
@@ -147,7 +156,7 @@ def get_all_data():
         return data, None
     except Exception as e: return None, e
 
-# --- 기본 분석 알고리즘 (API 키 없을 때 실행) ---
+# --- 기본 분석 알고리즘 (API 실패 시 작동) ---
 def get_basic_report(m, inv, score):
     res = {"headline": "", "portfolio": ""}
     
@@ -157,49 +166,84 @@ def get_basic_report(m, inv, score):
     else: res["headline"] = "☀️ 시장 에너지가 매우 좋습니다. 적극적인 투자 기회입니다."
 
     lines = []
-    # 반도체 섹터 전반
     if m['sox']['pct'] > 1: lines.append("✅ <b>반도체 섹터:</b> 필라델피아 반도체 강세로 투자 심리 호전, 비중 확대 유효")
     elif m['sox']['pct'] < -2: lines.append("⚠️ <b>반도체 섹터:</b> 지수 낙폭 과대로 인한 변동성 주의, 보수적 접근")
     else: lines.append("⏺ <b>반도체 섹터:</b> 뚜렷한 방향성 없음, 시장 주도주 흐름 주시")
 
-    # 국내 시장 전반
     if m['kosdaq']['pct'] > 0: lines.append("✅ <b>국내 시장:</b> 코스닥 및 중소형주 온기 확산 중, 선별 매수 고려")
     else: lines.append("⚠️ <b>국내 시장:</b> 지수 하락 압력 존재, 현금 비중 관리 필요")
 
-    # 미국 기술주
     if m['nas']['pct'] > 0: lines.append("🚀 <b>미국 기술주:</b> 성장주 위주의 상승 랠리 지속, 추세 추종 전략")
     else: lines.append("⏺ <b>미국 기술주:</b> 금리 부담에 따른 기술주 숨고르기, 분할 매수 대응")
 
-    # 대체 자산
     if m['gold']['pct'] > 0.5 or m['vix']['val'] > 20: lines.append("🟡 <b>대체 자산:</b> 불확실성 대비 안전자산(금) 및 헷지 수단 관심 필요")
 
     res["portfolio"] = "<br>".join(lines)
     return res
 
-# --- AI 분석 함수 ---
+# --- [핵심] AI 분석 함수 (모델 자동 우회 및 에러 리포팅 강화) ---
 def get_ai_portfolio_analysis(api_key, m, inv, score):
     if not api_key: return None
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    prompt = f"""당신은 전문 자산운용가입니다. 위험도 {score}점인 현재 시장 상황(매크로, 지수, 수급, 심리 등)을 종합적으로 분석하여 전반적인 주식 투자 운영 가이드를 JSON 형식으로 짜주세요."""
-    try:
-        res = requests.post(url, headers={'Content-Type': 'application/json'}, json={"contents": [{"parts": [{"text": prompt + str(m)}]}]}, timeout=10)
-        if res.status_code == 200:
-            text = res.json()['candidates'][0]['content']['parts'][0]['text']
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            return json.loads(match.group(0))
-        return None
-    except: return None
+    
+    # 여러 모델을 순차적으로 시도 (404 에러 방지)
+    models = [
+        "gemini-1.5-flash", 
+        "gemini-2.0-flash-exp", 
+        "gemini-1.5-pro", 
+        "gemini-1.0-pro",
+        "gemini-pro"
+    ]
+    
+    headers = {'Content-Type': 'application/json'}
+    prompt = f"""당신은 전문 자산운용가입니다. 위험도 {score}점인 현재 시장 상황(매크로, 지수, 수급, 심리 등)을 종합적으로 분석하여 전반적인 주식 투자 운영 가이드를 JSON 형식으로 짜주세요. 
+    JSON 키는 "headline"(시장 총평 한줄), "portfolio"(구체적 운영 가이드, html 태그 사용가능) 두 가지입니다."""
+    
+    last_error = ""
+    
+    for model_name in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        try:
+            res = requests.post(url, headers=headers, json={"contents": [{"parts": [{"text": prompt + str(m)}]}]}, timeout=8)
+            
+            if res.status_code == 200:
+                text = res.json()['candidates'][0]['content']['parts'][0]['text']
+                # JSON 추출 강화
+                match = re.search(r'\{.*\}', text, re.DOTALL)
+                if match:
+                    return json.loads(match.group(0))
+            else:
+                last_error = f"{model_name} Error: {res.status_code}"
+                continue # 다음 모델 시도
+                
+        except Exception as e:
+            last_error = str(e)
+            continue
+            
+    # 모든 모델 실패 시 에러 리턴
+    return {"error": f"AI 분석 실패 (모든 모델 시도함). 마지막 에러: {last_error}"}
 
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.51)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.52)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv = get_market_investors()
 news = get_financial_news()
 
 if data:
+    # --- 게이지 UI 함수 (링크 추가) ---
+    def mini_gauge(title, d, min_v, max_v, mode='risk', unit='', url_key=None):
+        val = d['val']
+        pct = max(0, min(100, (val - min_v) / (max_v - min_v) * 100))
+        grad = "linear-gradient(90deg, #4CAF50 0%, #FFEB3B 50%, #F44336 100%)" if mode=='risk' else "linear-gradient(90deg, #2196F3 0%, #EEEEEE 50%, #F44336 100%)"
+        
+        display_title = title
+        if url_key and url_key in chart_urls:
+            display_title = f'<a href="{chart_urls[url_key]}" target="_blank" title="차트 보기">{title} <span style="font-size:10px;">🔗</span></a>'
+            
+        st.markdown(f"""<div class="mini-gauge-container"><div class="mini-gauge-title"><span>{display_title}</span><span>{val:,.2f}{unit} ({d['pct']:+.2f}%)</span></div><div class="mini-gauge-track" style="background:{grad}"><div class="mini-gauge-pointer" style="left:{pct}%"></div></div><div class="mini-gauge-labels"><span>{min_v}</span><span>{max_v}</span></div></div>""", unsafe_allow_html=True)
+
     # URL 딕셔너리
     chart_urls = {
         "tnx": "https://finance.yahoo.com/quote/%5ETNX", "oil": "https://finance.yahoo.com/quote/CL=F",
@@ -209,19 +253,6 @@ if data:
         "gold": "https://finance.yahoo.com/quote/GC=F", "silver": "https://finance.yahoo.com/quote/SI=F",
         "btc": "https://finance.yahoo.com/quote/BTC-USD", "vix": "https://finance.yahoo.com/quote/%5EVIX"
     }
-
-    # --- 게이지 UI 함수 (링크 추가) ---
-    def mini_gauge(title, d, min_v, max_v, mode='risk', unit='', url_key=None):
-        val = d['val']
-        pct = max(0, min(100, (val - min_v) / (max_v - min_v) * 100))
-        grad = "linear-gradient(90deg, #4CAF50 0%, #FFEB3B 50%, #F44336 100%)" if mode=='risk' else "linear-gradient(90deg, #2196F3 0%, #EEEEEE 50%, #F44336 100%)"
-        
-        # 제목에 링크 적용
-        display_title = title
-        if url_key and url_key in chart_urls:
-            display_title = f'<a href="{chart_urls[url_key]}" target="_blank" title="차트 보기">{title} <span style="font-size:10px;">🔗</span></a>'
-            
-        st.markdown(f"""<div class="mini-gauge-container"><div class="mini-gauge-title"><span>{display_title}</span><span>{val:,.2f}{unit} ({d['pct']:+.2f}%)</span></div><div class="mini-gauge-track" style="background:{grad}"><div class="mini-gauge-pointer" style="left:{pct}%"></div></div><div class="mini-gauge-labels"><span>{min_v}</span><span>{max_v}</span></div></div>""", unsafe_allow_html=True)
 
     # 섹션 1: 주요 지표 현황
     st.subheader("📈 주요 지표 현황")
@@ -239,7 +270,6 @@ if data:
         mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 10000, 'stock', url_key='sox') 
         
         k_val = inv['raw_data'].get('kospi_foreigner', '0')
-        f_val = inv['raw_data'].get('futures_foreigner', '0')
         st.markdown(f"""
         <div style="background:#f9f9f9; padding:15px; border-radius:10px; border:1px solid #ddd; margin-top:5px;">
             <p style="margin:0; font-size:14px; color:#333;">💰 <b>외국인 수급 (코스피)</b></p>
@@ -264,17 +294,27 @@ if data:
     st.subheader(f"📊 종합 시장 위험도: {risk_score}점")
     
     # --- 보고서 출력 ---
-    report = get_ai_portfolio_analysis(api_key_input, data, inv, risk_score)
-    mode_label = "🤖 AI 애널리스트" if report else "⚙️ 기본 분석 엔진"
-    if not report: report = get_basic_report(data, inv, risk_score)
+    ai_report = get_ai_portfolio_analysis(api_key_input, data, inv, risk_score)
+    
+    # AI 에러 발생 여부 확인
+    is_error = False
+    if ai_report and "error" in ai_report:
+        is_error = True
+        error_msg = ai_report['error']
+        ai_report = None # 에러 시 기본 리포트로 전환
+
+    mode_label = "🤖 AI 애널리스트" if ai_report else "⚙️ 기본 분석 엔진"
+    if not ai_report: 
+        ai_report = get_basic_report(data, inv, risk_score)
+        if is_error: st.error(f"AI 연결 실패 ({error_msg}). 기본 분석 모드로 전환합니다.") # 에러 메시지 표시
     
     st.markdown(f"""
     <div class="guide-box">
         <div class="guide-header">📊 {mode_label} 브리핑</div>
         <div class="guide-section-title">1. 시장 총평</div>
-        <div class="guide-text"><b>{report.get('headline', '분석 실패')}</b></div>
+        <div class="guide-text"><b>{ai_report.get('headline', '분석 실패')}</b></div>
         <div class="guide-section-title">2. 주식 운영 가이드</div>
-        <div class="portfolio-card">{report.get('portfolio', '데이터 분석 실패').replace('\\n', '<br>')}</div>
+        <div class="portfolio-card">{ai_report.get('portfolio', '데이터 분석 실패').replace('\\n', '<br>')}</div>
     </div>
     """, unsafe_allow_html=True)
 
