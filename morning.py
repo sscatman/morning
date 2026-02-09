@@ -6,11 +6,11 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import re
 import time
-import json # JSON 처리를 위해 추가
+import json 
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.43)", # 버전 업데이트
+    page_title="위험도 분석 (V0.44)", # 버전 업데이트
     page_icon="📊",
     layout="wide"
 )
@@ -237,7 +237,7 @@ st.markdown("""
 # --- 사이드바: 설정 ---
 with st.sidebar:
     st.header("⚙️ 설정")
-    gemini_api_key = st.text_input("🔑 Gemini API 키", type="password", placeholder="API Key 입력 시 AI 분석 활성화")
+    gemini_api_key = st.text_input("🔑 Gemini API 키", type="password", placeholder="API Key 입력 시 AI 분석 활성화").strip() # 공백 제거
     if st.button('🔄 데이터 새로고침'):
         st.rerun()
     st.info("API 키가 없으면 기본 분석이 제공됩니다.")
@@ -331,7 +331,7 @@ def get_financial_news():
     except: pass
     return news_data
 
-# --- 함수: 제미나이 AI 브리핑 생성 ---
+# --- [수정] 함수: 제미나이 AI 브리핑 생성 (에러 핸들링 강화) ---
 def get_gemini_briefing(api_key, market_data):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
@@ -370,12 +370,18 @@ def get_gemini_briefing(api_key, market_data):
         if response.status_code == 200:
             result = response.json()
             text_res = result['candidates'][0]['content']['parts'][0]['text']
-            # JSON 파싱을 위해 마크다운 코드블록 제거
-            clean_json = text_res.replace('```json', '').replace('```', '').strip()
-            return json.loads(clean_json)
-        return None
-    except:
-        return None
+            
+            # [강화] 정규표현식으로 JSON 객체만 추출 (사족 제거)
+            match = re.search(r'\{.*\}', text_res, re.DOTALL)
+            if match:
+                json_str = match.group(0)
+                return json.loads(json_str)
+            else:
+                return {"error": "AI 응답 파싱 실패"}
+        else:
+            return {"error": f"API 호출 오류: {response.status_code} ({response.text[:50]}...)"}
+    except Exception as e:
+        return {"error": f"시스템 오류: {str(e)}"}
 
 # --- 함수: 데이터 가져오기 ---
 def get_all_data():
@@ -401,7 +407,7 @@ kst_now = datetime.utcnow() + timedelta(hours=9)
 now_str = kst_now.strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 위험도 분석 (V0.43)</div>
+<div class="header-title">📊 위험도 분석 (V0.44)</div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} (KST)</div>
 <hr>
 """, unsafe_allow_html=True)
@@ -572,7 +578,7 @@ else:
     risk_bar_html = f"""<div class="risk-wrapper"><div class="risk-pointer" style="left: {display_percent}%; border-color: {pointer_color}; color: {pointer_color};">{final_score}</div><div class="risk-track"><div class="risk-fill" style="width: {display_percent}%;"></div></div><div class="risk-scale"><span class="scale-mark">0</span><span class="scale-mark">20</span><span class="scale-mark">40</span><span class="scale-mark">60</span><span class="scale-mark">80</span><span class="scale-mark">100</span></div></div>"""
     st.markdown(risk_bar_html, unsafe_allow_html=True)
 
-    # 4. 행동 가이드 (AI or 기본)
+    # 4. 행동 가이드
     level_text = ""
     summary_text = ""
     action_text = ""
@@ -583,7 +589,7 @@ else:
     elif final_score >= 20: level_text = "Lv.2 위험 [주의]"
     else: level_text = "Lv.1 위험 [양호]"
 
-    # Gemini AI 브리핑 시도
+    # Gemini AI 브리핑
     ai_result = None
     if gemini_api_key:
         with st.spinner('🤖 AI 애널리스트가 시장을 분석 중입니다...'):
@@ -594,10 +600,14 @@ else:
             }
             ai_result = get_gemini_briefing(gemini_api_key, market_data_for_ai)
 
-    if ai_result:
-        summary_text = f"🤖 <b>AI 분석:</b> {ai_result.get('summary', '분석 실패')}"
-        action_text = f"💡 <b>투자 조언:</b> {ai_result.get('action', '분석 실패')}"
+    if ai_result and "error" not in ai_result:
+        summary_text = f"🤖 <b>AI 분석:</b> {ai_result.get('summary', '분석 중...')}"
+        action_text = f"💡 <b>투자 조언:</b> {ai_result.get('action', '데이터 분석 중...')}"
     else:
+        # 에러 발생 시 사용자에게 알림
+        if ai_result and "error" in ai_result:
+            st.error(f"AI 분석 실패: {ai_result['error']}")
+            
         # 기존 로직 (Fallback)
         has_risk = len(risks) > 0
         if final_score >= 40:
