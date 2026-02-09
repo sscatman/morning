@@ -131,19 +131,34 @@ st.markdown("""
 
     /* 5. 행동 가이드 및 정보 박스 */
     .guide-box {
-        padding: 20px;
+        padding: 25px;
         background-color: #ffffff;
-        border-radius: 12px;
-        border: 1px solid #eee;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        border-radius: 15px;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         margin-bottom: 20px;
         color: #111 !important;
     }
     .guide-header {
-        font-size: 18px;
+        font-size: 20px;
         font-weight: 800;
-        margin-bottom: 10px;
+        margin-bottom: 15px;
         color: #000 !important;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 10px;
+    }
+    .guide-section-title {
+        font-size: 16px;
+        font-weight: 700;
+        margin-top: 15px;
+        margin-bottom: 8px;
+        color: #333 !important;
+    }
+    .guide-text {
+        font-size: 15px;
+        line-height: 1.6;
+        margin-bottom: 10px;
+        color: #444 !important;
     }
     /* 박스 내부 요소 색상 강제 지정 (다크모드 대응) */
     .guide-box p, .guide-box li, .guide-box span, .guide-box div, .guide-box strong { 
@@ -153,27 +168,29 @@ st.markdown("""
     .factor-container {
         display: flex;
         gap: 20px;
-        margin-top: 15px;
-        border-top: 1px solid rgba(0,0,0,0.1);
-        padding-top: 15px;
+        margin-top: 20px;
+        background-color: #f9f9f9;
+        padding: 15px;
+        border-radius: 10px;
     }
     .factor-column {
         flex: 1;
     }
     /* 모바일 대응 */
     @media (max-width: 768px) {
-        .factor-container { flex-direction: column; gap: 10px; }
+        .factor-container { flex-direction: column; gap: 15px; }
         .factor-column { border-left: none !important; padding-left: 0 !important; }
     }
 
     .investor-box {
         margin-top: 15px;
         padding: 12px;
-        background-color: #f8f9fa;
+        background-color: #e3f2fd; /* 수급 정보 강조 배경 */
         border-radius: 8px;
-        border: 1px solid #eee;
-        font-size: 13px;
-        color: #111 !important;
+        font-size: 14px;
+        color: #1565c0 !important;
+        font-weight: bold;
+        text-align: center;
     }
     
     /* 6. 뉴스 리스트 */
@@ -362,7 +379,7 @@ else:
     kospi_val, kospi_diff, kospi_pct = get_info(raw_data['kospi'])
     kosdaq_val, kosdaq_diff, kosdaq_pct = get_info(raw_data['kosdaq'])
 
-    # 1. 가로 스크롤 카드 (들여쓰기 제거 및 한 줄 처리)
+    # 1. 가로 스크롤 카드
     def make_card(title, value, diff, is_percent=False):
         color_class = "plus" if diff >= 0 else "minus"
         sign = "+" if diff >= 0 else ""
@@ -372,7 +389,6 @@ else:
         
         return f'<div class="metric-card"><div class="metric-title">{title}</div><div class="metric-value">{fmt_val}</div><div class="metric-delta {color_class}">{sign}{diff:.2f}</div></div>'
 
-    # 주의: f-string 내부의 들여쓰기를 모두 제거하여 마크다운 코드 블록 인식을 방지함
     cards_html = f"""<div class="scroll-container">{make_card("🇺🇸 미국채 10년", tnx_val, tnx_diff, True)}{make_card("🛢️ 유가", oil_val, oil_diff)}{make_card("🇰🇷 환율", krw_val, krw_diff)}{make_card("💾 반도체(SOX)", sox_val, sox_pct, True)}{make_card("📉 코스피", kospi_val, kospi_pct, True)}{make_card("📉 코스닥", kosdaq_val, kosdaq_pct, True)}</div>"""
     st.markdown(cards_html, unsafe_allow_html=True)
     
@@ -390,24 +406,28 @@ else:
     positive_factors = []
     max_single_risk = 0 
 
+    # (1) 국채 금리: 3.5% ~ 5.0%
     s_tnx = calc_score(tnx_val, 3.50, 5.00)
     scores.append(s_tnx)
     max_single_risk = max(max_single_risk, s_tnx)
     if s_tnx >= 50: reasons.append(f"국채금리 부담 ({tnx_val:.2f}%)")
     elif s_tnx < 20: positive_factors.append(f"국채금리 안정 ({tnx_val:.2f}%)")
 
+    # (2) 유가: $65 ~ $100
     s_oil = calc_score(oil_val, 65.0, 100.0)
     scores.append(s_oil)
     max_single_risk = max(max_single_risk, s_oil)
     if s_oil >= 50: reasons.append(f"유가 상승세 (${oil_val:.2f})")
     elif s_oil < 20: positive_factors.append(f"유가 안정세 (${oil_val:.2f})")
 
+    # (3) 환율: 1350원 ~ 1550원
     s_krw = calc_score(krw_val, 1350, 1550)
     scores.append(s_krw)
     max_single_risk = max(max_single_risk, s_krw)
     if s_krw >= 50: reasons.append(f"고환율 지속 ({krw_val:.0f}원)")
     elif s_krw < 20: positive_factors.append(f"환율 안정권 ({krw_val:.0f}원)")
 
+    # (4) 반도체(SOX) 낙폭: -1% ~ -5%
     sox_drop = -sox_pct if sox_pct < 0 else 0
     s_sox = calc_score(sox_drop, 1.0, 5.0)
     scores.append(s_sox)
@@ -415,6 +435,7 @@ else:
     if s_sox >= 50: reasons.append(f"반도체 지수 급락 ({sox_pct:.2f}%)")
     elif sox_pct > 0: positive_factors.append(f"반도체 지수 상승 (+{sox_pct:.2f}%)")
 
+    # (5) 국내 증시 낙폭: -3.0% ~ -5.0%
     market_drop = -min(kospi_pct, kosdaq_pct) if min(kospi_pct, kosdaq_pct) < 0 else 0
     s_mkt = calc_score(market_drop, 3.0, 5.0)
     scores.append(s_mkt * 0.1) 
@@ -423,37 +444,35 @@ else:
     elif kospi_pct > 0 and kosdaq_pct > 0: positive_factors.append("국내 증시 동반 상승")
     elif kospi_pct > 0: positive_factors.append(f"코스피 상승 (+{kospi_pct:.2f}%)")
 
-    s_supply = 0
-    net_buy = 0
+    # (6,7) 수급
+    s_supply, s_futures = 0, 0
+    net_buy, fut_net_buy = 0, 0
     if investor_data:
         net_buy = investor_data['kospi_foreigner']
         if net_buy < 0:
             s_supply = calc_score(abs(net_buy), 0, 5000)
             if s_supply >= 50: reasons.append(f"외국인 현물 매도 ({net_buy}억)")
-        elif net_buy > 0:
-            positive_factors.append(f"외국인 현물 순매수 (+{net_buy}억)")
-        scores.append(s_supply)
-        max_single_risk = max(max_single_risk, s_supply)
-    else: scores.append(0)
-
-    s_futures = 0
-    if investor_data:
+        elif net_buy > 0: positive_factors.append(f"외국인 현물 순매수 (+{net_buy}억)")
+        
         fut_net_buy = investor_data['futures_foreigner']
         if fut_net_buy < 0:
             s_futures = calc_score(abs(fut_net_buy), 0, 10000)
             if s_futures >= 50: reasons.append(f"외국인 선물 매도 ({fut_net_buy}억)")
-        elif fut_net_buy > 0:
-            positive_factors.append(f"외국인 선물 순매수 (+{fut_net_buy}억)")
+        elif fut_net_buy > 0: positive_factors.append(f"외국인 선물 순매수 (+{fut_net_buy}억)")
+        
+        scores.append(s_supply)
         scores.append(s_futures)
-        max_single_risk = max(max_single_risk, s_futures)
-    else: scores.append(0)
+        max_single_risk = max(max_single_risk, s_supply, s_futures)
+    else: 
+        scores.append(0)
+        scores.append(0)
 
     final_score = int(sum(scores) / len(scores))
     if max_single_risk >= 80: final_score = max(final_score, 60)
     elif max_single_risk >= 60: final_score = max(final_score, 40)
     display_percent = max(min(final_score, 100), 2)
 
-    # 3. 위험도 바 (들여쓰기 제거)
+    # 3. 위험도 바
     st.subheader(f"📊 시장 위험도: {final_score}점")
     
     if final_score >= 80: pointer_color = "#ff3d00"
@@ -465,32 +484,56 @@ else:
     risk_bar_html = f"""<div class="risk-wrapper"><div class="risk-pointer" style="left: {display_percent}%; border-color: {pointer_color}; color: {pointer_color};">{final_score}</div><div class="risk-track"><div class="risk-fill" style="width: {display_percent}%;"></div></div><div class="risk-scale"><span class="scale-mark">0</span><span class="scale-mark">20</span><span class="scale-mark">40</span><span class="scale-mark">60</span><span class="scale-mark">80</span><span class="scale-mark">100</span></div></div>"""
     st.markdown(risk_bar_html, unsafe_allow_html=True)
 
-    # 4. 행동 가이드
-    guide_msg = ""
-    guide_bg = ""
+    # 4. 행동 가이드 생성 (AI 자동 브리핑 로직)
     level_text = ""
+    summary_text = "" # 핵심 요약 (자동 생성)
+    action_text = ""  # 투자 판단
 
-    if final_score >= 80:
-        level_text = "위험도 [최고조] - 시장 붕괴"
-        guide_msg = "공황 상태입니다. 매매 중단, 현금 100%."
-        guide_bg = "#ffebee"
-    elif final_score >= 60:
-        level_text = "위험도 [높음] - 하락장"
-        guide_msg = "보수적 대응. 현금 비중 확대 필요."
-        guide_bg = "#ffebee"
+    # (1) 요약 멘트 생성 로직
+    bad_factors = []
+    good_factors = []
+    
+    if s_tnx >= 40: bad_factors.append("국채금리 부담")
+    if s_krw >= 40: bad_factors.append("고환율")
+    if s_oil >= 40: bad_factors.append("유가 상승")
+    if s_supply >= 40 or s_futures >= 40: bad_factors.append("외인 매도")
+    if s_sox >= 40: bad_factors.append("반도체 약세")
+    
+    if s_tnx < 20: good_factors.append("금리 안정")
+    if s_krw < 20: good_factors.append("환율 안정")
+    if sox_pct > 1.0: good_factors.append("반도체 급등")
+    if net_buy > 1000 or fut_net_buy > 1000: good_factors.append("외인 매수세")
+    
+    if final_score >= 60:
+        main_cause = ", ".join(bad_factors[:2])
+        summary_text = f"🚨 <b>{main_cause}</b> 등이 시장을 강하게 압박하고 있습니다. 위험 관리가 최우선입니다."
+        action_text = "주식 비중을 과감히 줄이고 현금을 확보하세요. 떨어지는 칼날을 잡지 마십시오."
     elif final_score >= 40:
-        level_text = "위험도 [경계] - 관망"
-        guide_msg = "신규 진입 자제. 리스크 관리 집중."
-        guide_bg = "#fff3e0"
+        main_cause = ", ".join(bad_factors[:2]) if bad_factors else "대외 불확실성"
+        summary_text = f"☁️ <b>{main_cause}</b>으로 인해 시장이 방향성을 잃고 흔들리고 있습니다."
+        action_text = "신규 매수는 자제하고 관망하세요. 확실한 주도주 외에는 리스크 관리가 필요합니다."
     elif final_score >= 20:
-        level_text = "위험도 [주의] - 변동성"
-        guide_msg = "분할 매수로 대응하세요."
-        guide_bg = "#fffde7"
-    else:
-        level_text = "위험도 [양호] - 투자 적기"
-        guide_msg = "시장이 안정적입니다. 적극 투자 구간."
-        guide_bg = "#e8f5e9"
+        if bad_factors and good_factors:
+            summary_text = f"⚖️ <b>{bad_factors[0]}</b> 우려가 있지만, <b>{good_factors[0]}</b> 등이 하단을 지지하는 혼조세입니다."
+        else:
+            summary_text = "⛅ 큰 악재는 없으나 뚜렷한 상승 동력도 부족한 변동성 장세입니다."
+        action_text = "몰빵은 금물입니다. 조정 시마다 우량주 위주로 분할 매수하는 전략이 유효합니다."
+    else: # 20점 미만 (좋음)
+        if good_factors:
+            main_good = ", ".join(good_factors[:2])
+            summary_text = f"☀️ <b>{main_good}</b> 등이 시장 상승을 주도하고 있습니다. 투자 심리가 매우 양호합니다."
+        else:
+            summary_text = "☀️ 악재가 해소되며 시장이 안정을 찾았습니다. 전반적으로 매수세가 유입되고 있습니다."
+        action_text = "적극 매수 구간입니다. 주도 섹터(반도체 등) 비중을 늘려 수익을 극대화하세요."
 
+    # 레벨 텍스트 설정
+    if final_score >= 80: level_text = "Lv.5 위험도 [최고조]"
+    elif final_score >= 60: level_text = "Lv.4 위험도 [높음]"
+    elif final_score >= 40: level_text = "Lv.3 위험도 [경계]"
+    elif final_score >= 20: level_text = "Lv.2 위험도 [주의]"
+    else: level_text = "Lv.1 위험도 [양호]"
+
+    # 투자자 정보 HTML
     if investor_data and investor_data.get('kospi_foreigner') != 0:
         raw = investor_data['raw_data']
         k_for = raw.get('kospi_foreigner', '0')
@@ -499,20 +542,45 @@ else:
     else:
         investor_content = "<span style='color:#999;'>수급 정보 집계 중... (장 시작 전이거나 데이터 없음)</span>"
 
+    # 리스트 HTML
     if reasons:
         reason_items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in reasons])
         reason_content = f"<ul style='margin-top:5px; padding-left:20px; color:#d32f2f; font-weight:600;'>{reason_items}</ul>"
-    else:
-        reason_content = "<p style='margin-top:5px; color:#999;'>발견된 위험 요인이 없습니다.</p>"
+    else: reason_content = "<p style='margin-top:5px; color:#999;'>특이 위험 요인 없음</p>"
 
     if positive_factors:
         positive_items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in positive_factors])
         positive_content = f"<ul style='margin-top:5px; padding-left:20px; color:#2e7d32; font-weight:600;'>{positive_items}</ul>"
-    else:
-        positive_content = "<p style='margin-top:5px; color:#999;'>뚜렷한 호재가 없습니다.</p>"
+    else: positive_content = "<p style='margin-top:5px; color:#999;'>특이 호재 요인 없음</p>"
 
-    # [중요] HTML 들여쓰기 제거 및 한 줄 처리로 코드 블록 오류 방지
-    guide_html = f"""<div class="guide-box" style="background-color: {guide_bg};"><div class="guide-header">👉 현재 상태: {level_text}</div><p style="font-weight:bold; font-size:16px; margin-bottom:15px;">{guide_msg}</p><div class="factor-container"><div class="factor-column"><strong>🚨 위험 요인 (Risk):</strong>{reason_content}</div><div class="factor-column" style="border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;"><strong>✅ 투자 긍정 요인 (Opportunity):</strong>{positive_content}</div></div><div class="investor-box"><strong style="display:block; margin-bottom:5px;">💰 외국인 수급 현황 (추정):</strong>{investor_content}</div></div>"""
+    # [최종] 종합 결과 보고서 HTML
+    guide_html = f"""
+    <div class="guide-box">
+        <div class="guide-header">종합 결과: {level_text}</div>
+        
+        <div class="guide-section-title">1. 핵심 요약</div>
+        <div class="guide-text">{summary_text}</div>
+        
+        <div class="guide-section-title">2. 투자 판단</div>
+        <div class="guide-text">{action_text}</div>
+        
+        <div class="factor-container">
+            <div class="factor-column">
+                <strong style="color:#d32f2f;">🚨 위험 요인 (Risk):</strong>
+                {reason_content}
+            </div>
+            <div class="factor-column" style="border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
+                <strong style="color:#2e7d32;">✅ 투자 긍정 요인 (Opportunity):</strong>
+                {positive_content}
+            </div>
+        </div>
+
+        <div class="investor-box">
+            <strong style="display:block; margin-bottom:5px;">💰 외국인 수급 현황 (추정):</strong>
+            {investor_content}
+        </div>
+    </div>
+    """
     st.markdown(guide_html, unsafe_allow_html=True)
     
     st.markdown("---")
