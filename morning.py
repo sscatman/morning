@@ -17,7 +17,7 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.53", 
+    page_title="위험도 분석 V0.54", 
     page_icon="📊",
     layout="wide"
 )
@@ -63,9 +63,9 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 위험도 분석 V0.53")
+    st.header("⚙️ 위험도 분석 V0.54")
     
-    # API 키 입력 로직 강화
+    # API 키 입력 로직
     api_key_input = MY_GEMINI_API_KEY.strip() if MY_GEMINI_API_KEY else ""
     if not api_key_input:
         api_key_input = st.text_input("🔑 Gemini API 키 입력", type="password", placeholder="여기에 키를 입력하세요").strip()
@@ -181,19 +181,15 @@ def get_basic_report(m, inv, score):
     res["portfolio"] = "<br>".join(lines)
     return res
 
-# --- [핵심] AI 분석 함수 (모델 자동 우회 및 에러 리포팅 강화) ---
+# --- [핵심] AI 분석 함수 (V1 엔드포인트 적용) ---
 def get_ai_portfolio_analysis(api_key, m, inv, score):
     if not api_key: return None
     
-    # 여러 모델을 순차적으로 시도 (404 에러 방지용 모델 리스트 확장)
+    # 안정적인 V1 엔드포인트에서 지원하는 모델 목록
     models = [
         "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash-001",
         "gemini-1.5-pro",
-        "gemini-1.5-pro-latest",
-        "gemini-1.0-pro",
-        "gemini-pro"
+        "gemini-1.0-pro"
     ]
     
     headers = {'Content-Type': 'application/json'}
@@ -203,9 +199,10 @@ def get_ai_portfolio_analysis(api_key, m, inv, score):
     last_error = ""
     
     for model_name in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        # [수정됨] v1beta -> v1 으로 변경
+        url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={api_key}"
         try:
-            res = requests.post(url, headers=headers, json={"contents": [{"parts": [{"text": prompt + str(m)}]}]}, timeout=8)
+            res = requests.post(url, headers=headers, json={"contents": [{"parts": [{"text": prompt + str(m)}]}]}, timeout=10)
             
             if res.status_code == 200:
                 text = res.json()['candidates'][0]['content']['parts'][0]['text']
@@ -214,7 +211,7 @@ def get_ai_portfolio_analysis(api_key, m, inv, score):
                 if match:
                     return json.loads(match.group(0))
             else:
-                last_error = f"{model_name}: {res.status_code}"
+                last_error = f"{model_name} Error: {res.status_code}"
                 continue # 다음 모델 시도
                 
         except Exception as e:
@@ -222,12 +219,12 @@ def get_ai_portfolio_analysis(api_key, m, inv, score):
             continue
             
     # 모든 모델 실패 시 에러 리턴
-    return {"error": f"AI 연결 실패 (모든 모델 시도함). 마지막 에러: {last_error}"}
+    return {"error": f"AI 연결 실패 (v1 엔드포인트 시도함). 마지막 에러: {last_error}"}
 
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.53)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.54)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv = get_market_investors()
