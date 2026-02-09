@@ -9,7 +9,7 @@ import time
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.32)",
+    page_title="위험도 분석 (V0.33)",
     page_icon="📊",
     layout="wide"
 )
@@ -367,7 +367,7 @@ kst_now = datetime.utcnow() + timedelta(hours=9)
 now_str = kst_now.strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 위험도 분석 (V0.32)</div>
+<div class="header-title">📊 위험도 분석 (V0.33)</div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} (KST)</div>
 <hr>
 """, unsafe_allow_html=True)
@@ -458,21 +458,21 @@ else:
     with c3:
         st.markdown(draw_mini_gauge("🇰🇷 환율 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", krw_val, f"{krw_val:.0f}원", 1300, 1600, 'risk', url=chart_urls['krw']), unsafe_allow_html=True)
 
-    # 2행: 나스닥, S&P500, 반도체 (미국)
+    # 2행: 나스닥, S&P500, 반도체 (미국) - 범위 -10 ~ 10으로 확장
     c4, c5, c6 = st.columns(3)
     with c4:
-        st.markdown(draw_mini_gauge("🇺🇸 나스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", nas_pct, f"{nas_pct:+.2f}%", -3.0, 3.0, 'stock', url=chart_urls['nas']), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇺🇸 나스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", nas_pct, f"{nas_pct:+.2f}%", -10.0, 10.0, 'stock', url=chart_urls['nas']), unsafe_allow_html=True)
     with c5:
-        st.markdown(draw_mini_gauge("🇺🇸 S&P 500 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sp5_pct, f"{sp5_pct:+.2f}%", -3.0, 3.0, 'stock', url=chart_urls['sp5']), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇺🇸 S&P 500 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sp5_pct, f"{sp5_pct:+.2f}%", -10.0, 10.0, 'stock', url=chart_urls['sp5']), unsafe_allow_html=True)
     with c6:
-        st.markdown(draw_mini_gauge("💾 반도체(SOX) <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sox_pct, f"{sox_pct:+.2f}%", -5.0, 5.0, 'stock', url=chart_urls['sox']), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("💾 반도체(SOX) <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sox_pct, f"{sox_pct:+.2f}%", -10.0, 10.0, 'stock', url=chart_urls['sox']), unsafe_allow_html=True)
 
-    # 3행: 코스피, 코스닥 (한국)
+    # 3행: 코스피, 코스닥 (한국) - 범위 -10 ~ 10으로 확장
     c7, c8, c9 = st.columns(3)
     with c7:
-        st.markdown(draw_mini_gauge("🇰🇷 코스피 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kospi_pct, f"{kospi_pct:+.2f}%", -3.0, 3.0, 'stock', url=chart_urls['kospi']), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇰🇷 코스피 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kospi_pct, f"{kospi_pct:+.2f}%", -10.0, 10.0, 'stock', url=chart_urls['kospi']), unsafe_allow_html=True)
     with c8:
-        st.markdown(draw_mini_gauge("🇰🇷 코스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kosdaq_pct, f"{kosdaq_pct:+.2f}%", -3.0, 3.0, 'stock', url=chart_urls['kosdaq']), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇰🇷 코스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kosdaq_pct, f"{kosdaq_pct:+.2f}%", -10.0, 10.0, 'stock', url=chart_urls['kosdaq']), unsafe_allow_html=True)
     with c9:
         st.empty() # 빈칸
 
@@ -510,34 +510,24 @@ else:
     if s_krw >= 50: reasons.append(f"고환율 지속 ({krw_val:.0f}원)")
     elif s_krw < 20: positive_factors.append(f"환율 안정권 ({krw_val:.0f}원)")
 
-    # (4) 반도체 낙폭: -1% ~ -5%
+    # (4) 반도체 낙폭: -1% ~ -10% (기준 완화: -10% 폭락해야 만점)
     sox_drop = -sox_pct if sox_pct < 0 else 0
-    s_sox = calc_score(sox_drop, 1.0, 5.0)
+    s_sox = calc_score(sox_drop, 1.0, 10.0)
     scores.append(s_sox)
     max_single_risk = max(max_single_risk, s_sox)
     if s_sox >= 50: reasons.append(f"반도체 지수 급락 ({sox_pct:.2f}%)")
     elif sox_pct > 0: positive_factors.append(f"반도체 지수 상승 (+{sox_pct:.2f}%)")
 
-    # (5) 국내 증시 낙폭: -3.0% ~ -5.0%
+    # (5) 국내 증시 낙폭: -3.0% ~ -10.0% (기준 완화: -10% 폭락해야 만점)
     market_drop = -min(kospi_pct, kosdaq_pct) if min(kospi_pct, kosdaq_pct) < 0 else 0
-    s_mkt = calc_score(market_drop, 3.0, 5.0)
+    s_mkt = calc_score(market_drop, 3.0, 10.0)
     scores.append(s_mkt * 0.1) 
     max_single_risk = max(max_single_risk, s_mkt) 
     if s_mkt > 0: reasons.append(f"증시 폭락 발생 ({min(kospi_pct, kosdaq_pct):.2f}%)")
     elif kospi_pct > 0: positive_factors.append(f"코스피 상승 (+{kospi_pct:.2f}%)")
 
-    # (6,7) 미국 지수(S&P, 나스닥) 낙폭: -1.0% ~ -3.0%
-    # S&P500
-    sp5_drop = -sp5_pct if sp5_pct < 0 else 0
-    s_sp5 = calc_score(sp5_drop, 1.0, 3.0)
-    scores.append(s_sp5)
-    if s_sp5 >= 50: reasons.append(f"S&P500 하락세 ({sp5_pct:.2f}%)")
-    
-    # 나스닥
-    nas_drop = -nas_pct if nas_pct < 0 else 0
-    s_nas = calc_score(nas_drop, 1.5, 4.0) # 나스닥은 변동성이 더 크므로 기준 완화
-    scores.append(s_nas)
-    if s_nas >= 50: reasons.append(f"나스닥 급락 ({nas_pct:.2f}%)")
+    # (6,7) 미국 지수(S&P, 나스닥) 낙폭 (단순 모니터링용, 점수엔 미반영)
+    # 필요한 경우 여기에 로직 추가 가능
 
     # (8,9) 수급
     s_supply, s_futures = 0, 0
@@ -588,7 +578,7 @@ else:
     if s_oil >= 40: bad_factors.append("유가 상승")
     if s_supply >= 40 or s_futures >= 40: bad_factors.append("외인 매도")
     if s_sox >= 40: bad_factors.append("반도체 약세")
-    if s_nas >= 40: bad_factors.append("미국장 하락")
+    if nas_pct <= -2.0: bad_factors.append("미국장 하락")
     
     if s_tnx < 20: good_factors.append("금리 안정")
     if s_krw < 20: good_factors.append("환율 안정")
@@ -652,6 +642,19 @@ else:
             for item in news_data['korea_semi']:
                 st.markdown(f"""<div class="news-item"><a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a></div>""", unsafe_allow_html=True)
         else: st.info("국내 주요 뉴스를 불러오지 못했습니다.")
+
+    st.markdown("---")
+    with st.expander("📜 위험도 산정 기준 (종합 평균 + 단독 위험 보정)"):
+        st.markdown("""
+        **총 7개 항목의 평균 점수를 기반으로 하되, 단 하나의 항목이라도 치명적이면 경고 단계를 격상합니다.**
+        1. **국채금리:** 3.5% 이상 시 위험 증가 (5.0% 만점)
+        2. **유가:** $65 이상 시 위험 증가 ($100 만점)
+        3. **환율:** 1,350원 이상 시 위험 증가 (1,550원 만점)
+        4. **반도체(SOX):** 전일 대비 하락 시 위험 증가 (-10% 만점)
+        5. **국내증시:** -3% 이상 폭락 시 위험 급증 (-10% 만점, 가중치 0.1배)
+        6. **현물 수급:** 외국인 코스피 5천억 매도 만점
+        7. **선물 수급:** 외국인 선물 1조원 매도 만점
+        """)
 
     # --- 5분 자동 새로고침 ---
     time.sleep(300)
