@@ -15,8 +15,8 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.47)", 
-    page_icon="📊",
+    page_title="위험도 분석 V1.5", 
+    page_icon="🦅",
     layout="wide"
 )
 
@@ -45,7 +45,7 @@ st.markdown("""
     .guide-header { font-size: 20px; font-weight: 800; margin-bottom: 15px; color: #1565c0 !important; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
     .guide-section-title { font-size: 16px; font-weight: 700; margin-top: 20px; margin-bottom: 10px; color: #1565c0 !important; }
     .guide-text { font-size: 15px; line-height: 1.7; margin-bottom: 10px; color: #333 !important; }
-    .portfolio-card { background-color: #f8f9fa; padding: 15px; border-radius: 10px; margin-top: 15px; border-left: 5px solid #1565c0; }
+    .portfolio-card { background-color: #f0f4f8; padding: 15px; border-radius: 10px; margin-top: 15px; border-left: 5px solid #1565c0; }
     .portfolio-item { margin-bottom: 8px; font-size: 14.5px; line-height: 1.6; }
     
     .news-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
@@ -57,7 +57,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 설정")
+    st.header("⚙️ Eagle Eye V1.5")
     api_key_input = MY_GEMINI_API_KEY if MY_GEMINI_API_KEY else ""
     if not api_key_input:
         api_key_input = st.text_input("🔑 Gemini API 키 입력", type="password", placeholder="키를 넣으면 AI 분석이 활성화됩니다.")
@@ -151,21 +151,23 @@ def get_basic_report(m, inv, score):
     else: res["headline"] = "☀️ 시장 에너지가 매우 좋습니다. 적극적인 투자 기회입니다."
 
     lines = []
-    # KODEX 반도체
-    if m['sox']['pct'] > 1: lines.append("✅ <b>KODEX 반도체:</b> 반도체 지수 강세로 추가 상승 기대")
-    else: lines.append("⏺ <b>KODEX 반도체:</b> 시장 흐름 주시하며 비중 유지")
+    # 주식 운영 가이드 (전반적)
+    if m['nas']['pct'] > 1.0 or m['sox']['pct'] > 1.0: 
+        lines.append("✅ <b>상승장:</b> 기술주 및 반도체 섹터 중심으로 비중 확대 권장")
+    elif m['nas']['pct'] < -1.5: 
+        lines.append("⚠️ <b>하락장:</b> 변동성 확대 구간, 현금 비중 늘리고 관망 필요")
+    else:
+        lines.append("⏺ <b>보합세:</b> 뚜렷한 방향성 없음, 실적주 위주 선별 접근")
 
-    # KODEX 코스닥 150
-    if m['kosdaq']['pct'] > 0: lines.append("✅ <b>KODEX 코스닥 150:</b> 국내 중소형주 온기 확산 중")
-    else: lines.append("⚠️ <b>KODEX 코스닥 150:</b> 코스닥 변동성 확대에 따른 주의 요망")
-
-    # 아이온큐
-    if m['nas']['pct'] > 0: lines.append("🚀 <b>아이온큐(IONQ):</b> 미 기술주 상승 랠리 편승 중")
-    else: lines.append("⏺ <b>아이온큐(IONQ):</b> 성장주 밸류에이션 부담 체크 필요")
-
-    # 실스크(LAES)
-    if m['laes']['pct'] > 0: lines.append("🟡 <b>실스크(LAES):</b> 개별 모멘텀 지속 여부 확인 필요")
-    else: lines.append("⏺ <b>실스크(LAES):</b> 하방 경직성 테스트 구간")
+    # 매크로 가이드
+    if m['tnx']['val'] > 4.5 or m['krw']['val'] > 1400:
+        lines.append("📉 <b>리스크 관리:</b> 고금리/고환율 부담 지속, 보수적 운용 필요")
+    
+    # 수급 가이드
+    if inv['kospi_foreigner'] > 2000:
+        lines.append("💰 <b>수급 호조:</b> 외국인 매수세 유입, 대형주 유리")
+    elif inv['kospi_foreigner'] < -2000:
+        lines.append("💸 <b>수급 이탈:</b> 외국인 매도세 주의")
 
     res["portfolio"] = "<br>".join(lines)
     return res
@@ -174,7 +176,7 @@ def get_basic_report(m, inv, score):
 def get_ai_portfolio_analysis(api_key, m, inv, score):
     if not api_key: return None
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    prompt = f"""당신은 전문 자산운용가입니다. [보유종목: KODEX반도체, KODEX코스닥150, 아이온큐(IONQ), 실스크(LAES)]에 대해 위험도 {score}점인 현재 시장 상황을 분석하여 전략을 JSON 형식으로 짜주세요."""
+    prompt = f"""당신은 전문 자산운용가입니다. 위험도 {score}점인 현재 시장 상황을 분석하여 전반적인 주식 투자 운영 가이드를 JSON 형식으로 짜주세요."""
     try:
         res = requests.post(url, headers={'Content-Type': 'application/json'}, json={"contents": [{"parts": [{"text": prompt + str(m)}]}]}, timeout=10)
         if res.status_code == 200:
@@ -187,7 +189,7 @@ def get_ai_portfolio_analysis(api_key, m, inv, score):
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.47)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">🦅 Eagle Eye V1.5</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv = get_market_investors()
@@ -201,20 +203,20 @@ if data:
         grad = "linear-gradient(90deg, #4CAF50 0%, #FFEB3B 50%, #F44336 100%)" if mode=='risk' else "linear-gradient(90deg, #2196F3 0%, #EEEEEE 50%, #F44336 100%)"
         st.markdown(f"""<div class="mini-gauge-container"><div class="mini-gauge-title"><span>{title}</span><span>{val:,.2f}{unit} ({d['pct']:+.2f}%)</span></div><div class="mini-gauge-track" style="background:{grad}"><div class="mini-gauge-pointer" style="left:{pct}%"></div></div><div class="mini-gauge-labels"><span>{min_v}</span><span>{max_v}</span></div></div>""", unsafe_allow_html=True)
 
-    # 섹션 1: 주요 지표 현황
+    # 섹션 1: 주요 지표 현황 (통합)
     st.subheader("📈 주요 지표 현황")
     c1, c2, c3 = st.columns(3)
     with c1:
         mini_gauge("🇺🇸 국채 10년", data['tnx'], 3.0, 5.5, 'risk', '%')
-        mini_gauge("🇺🇸 나스닥", data['nas'], 15000, 40000, 'stock')
+        mini_gauge("🇺🇸 나스닥", data['nas'], 15000, 40000, 'stock') 
         mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 5000, 'stock')
     with c2:
         mini_gauge("🛢️ WTI 유가", data['oil'], 60, 100, 'risk', '$')
         mini_gauge("🇺🇸 S&P 500", data['sp5'], 4500, 10000, 'stock')
-        mini_gauge("🇰🇷 코스닥", data['kosdaq'], 600, 3000, 'stock')
+        mini_gauge("🇰🇷 코스닥", data['kosdaq'], 600, 3000, 'stock') 
     with c3:
         mini_gauge("🇰🇷 환율", data['krw'], 1300, 1550, 'risk', '원')
-        mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 10000, 'stock')
+        mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 10000, 'stock') 
         st.markdown(f"""<div style="background:#f9f9f9; padding:15px; border-radius:10px; border:1px solid #ddd; margin-top:5px;"><p style="margin:0; font-size:12px; color:#666;">💰 외인 현물: <b>{inv['raw_data'].get('kospi_foreigner', '0')}억</b></p><p style="margin:5px 0 0 0; font-size:12px; color:#666;">💰 외인 선물: <b>{inv['raw_data'].get('futures_foreigner', '0')}억</b></p></div>""", unsafe_allow_html=True)
 
     st.markdown("---")
@@ -222,10 +224,10 @@ if data:
     # 섹션 2: 대체 자산 & 공포지수
     st.subheader("🛡️ 대체 자산 & 공포지수")
     c7, c8, c9, c10 = st.columns(4)
-    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 5000, 'stock', '$') # 2000~5000
-    with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 150, 'stock', '$') # 20~150
-    with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 200000, 'stock', '$') # 0~200,000
-    with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 50, 'risk') # 10~50
+    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 10000, 'stock', '$') # 10000으로 수정
+    with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 150, 'stock', '$') 
+    with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 200000, 'stock', '$') 
+    with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 50, 'risk') 
 
     # --- 위험도 산정 ---
     def calc_r(v, min_v, max_v): return max(0, min(100, (v - min_v) / (max_v - min_v) * 100))
@@ -243,7 +245,7 @@ if data:
         <div class="guide-header">🦅 {mode_label} 브리핑</div>
         <div class="guide-section-title">1. 시장 총평</div>
         <div class="guide-text"><b>{report.get('headline', '분석 실패')}</b></div>
-        <div class="guide-section-title">2. 사장님 보유 종목 운영 가이드 (KODEX/아이온큐/LAES)</div>
+        <div class="guide-section-title">2. 주식 운영 가이드</div>
         <div class="portfolio-card">{report.get('portfolio', '데이터 분석 실패').replace('\\n', '<br>')}</div>
     </div>
     """, unsafe_allow_html=True)
