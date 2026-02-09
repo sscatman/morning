@@ -325,7 +325,7 @@ weather = get_weather("Daejeon")
 now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 사장님의 마켓 레이더 (100점 만점)</div>
+<div class="header-title">📊 시장 위험도 분석 </div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} 기준</div>
 <hr>
 """, unsafe_allow_html=True)
@@ -550,3 +550,4 @@ else:
         | **10~19** | 🌤️ 양호 | 실적주 매수 대응. |
         | **0~9** | ☀️ 최상 | 적극 매수 구간. |
         """)
+
