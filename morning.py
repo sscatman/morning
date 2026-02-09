@@ -5,35 +5,35 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
+import time  # 자동 갱신을 위한 모듈 추가
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="시장 정밀 분석 (100점 만점)",
+    page_title="위험도 분석",
     page_icon="📊",
     layout="wide"
 )
 
-# --- 스타일링 (CSS) 수정됨 ---
+# --- 스타일링 (CSS) ---
 st.markdown("""
     <style>
-    /* 1. 폰트 패밀리 설정 (아이콘 깨짐 방지: * 대신 구체적 태그 지정) */
+    /* 1. 폰트 패밀리 설정 */
     html, body, p, h1, h2, h3, h4, div, span, label, li, a {
         font-family: 'Pretendard', sans-serif !important;
     }
     
-    /* 2. 헤더 타이틀: 테마에 따라 자동 변환 */
+    /* 2. 헤더 타이틀 */
     .header-title {
         font-size: 24px !important;
         font-weight: bold;
         margin-bottom: 5px;
-        /* 색상 지정 삭제 -> 다크모드 자동 대응 */
     }
     .sub-info {
         font-size: 14px;
-        opacity: 0.8; /* 색상 대신 투명도 사용 */
+        opacity: 0.8;
     }
     
-    /* 3. 가로 스크롤 카드 (배경이 흰색이므로 글씨는 검은색 강제) */
+    /* 3. 가로 스크롤 카드 */
     .scroll-container {
         display: flex;
         overflow-x: auto;
@@ -43,17 +43,17 @@ st.markdown("""
         -webkit-overflow-scrolling: touch;
     }
     .metric-card {
-        background-color: #ffffff; /* 흰색 배경 고정 */
+        background-color: #ffffff;
         border: 1px solid #e0e0e0;
         border-radius: 12px;
         padding: 15px;
-        min-width: 130px;
+        min-width: 140px;
         text-align: center;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         display: inline-block;
     }
     .metric-title { font-size: 13px; color: #666 !important; margin-bottom: 5px; }
-    .metric-value { font-size: 18px; font-weight: 800; color: #000 !important; } /* 검은색 강제 */
+    .metric-value { font-size: 18px; font-weight: 800; color: #000 !important; }
     .metric-delta { font-size: 12px; font-weight: 600; margin-top: 2px; }
     .plus { color: #d62728 !important; }
     .minus { color: #1f77b4 !important; }
@@ -96,7 +96,7 @@ st.markdown("""
         line-height: 33px;
         font-weight: 800;
         font-size: 14px;
-        color: #333 !important; /* 배경이 흰색이므로 검은글씨 */
+        color: #333 !important;
         border: 2px solid;
         z-index: 10;
         transition: left 1s cubic-bezier(0.4, 0, 0.2, 1);
@@ -120,7 +120,7 @@ st.markdown("""
         width: 100%;
         display: flex;
         justify-content: space-between;
-        color: #999; /* 기본 회색 */
+        color: #999;
         font-size: 11px;
         font-weight: bold;
     }
@@ -129,7 +129,7 @@ st.markdown("""
         content: ''; position: absolute; top: -8px; left: 50%; width: 1px; height: 6px; background-color: #ccc;
     }
 
-    /* 5. 행동 가이드 박스 (배경이 밝은색이므로 글씨는 검은색 강제) */
+    /* 5. 행동 가이드 및 정보 박스 */
     .guide-box {
         padding: 20px;
         background-color: #ffffff;
@@ -137,7 +137,7 @@ st.markdown("""
         border: 1px solid #eee;
         box-shadow: 0 4px 12px rgba(0,0,0,0.03);
         margin-bottom: 20px;
-        color: #111 !important; /* 내부 텍스트 검은색 강제 */
+        color: #111 !important;
     }
     .guide-header {
         font-size: 18px;
@@ -145,25 +145,22 @@ st.markdown("""
         margin-bottom: 10px;
         color: #000 !important;
     }
-    /* 가이드 박스 내부의 p 태그 등도 검은색 강제 */
-    .guide-box p, .guide-box li, .guide-box span, .guide-box div {
-        color: #111;
-    }
+    .guide-box p, .guide-box li, .guide-box span, .guide-box div { color: #111; }
     
     .investor-box {
         margin-top: 15px;
         padding: 12px;
-        background-color: #f8f9fa; /* 밝은 회색 배경 */
+        background-color: #f8f9fa;
         border-radius: 8px;
         border: 1px solid #eee;
         font-size: 13px;
         color: #111 !important;
     }
     
-    /* 6. 뉴스 리스트 (배경 없음 -> 다크모드 자동 적응) */
+    /* 6. 뉴스 리스트 */
     .news-item {
         padding: 8px 0;
-        border-bottom: 1px solid #f0f0f0; /* 다크모드에선 흐리게 보일 수 있음, 투명도 조절 권장 */
+        border-bottom: 1px solid #f0f0f0;
         font-size: 14px;
     }
     @media (prefers-color-scheme: dark) {
@@ -173,16 +170,13 @@ st.markdown("""
     
     .news-title { 
         font-weight: 600; 
-        /* color: #333 !important; 삭제 -> 테마 따름 */
         display: block; 
         margin-bottom: 2px; 
     }
-    /* 뉴스 제목 링크 스타일 */
     a.news-title:hover {
         text-decoration: underline;
         color: #2979ff !important;
     }
-    
     .news-meta { font-size: 12px; opacity: 0.7; }
     .fed-badge { 
         background-color: #e3f2fd; color: #1565c0 !important; 
@@ -206,106 +200,101 @@ def get_weather(city="Daejeon"):
     except:
         return "N/A"
 
-# --- 함수: 수급 정보 (파싱 로직 개선) ---
-def get_kr_market_investors():
-    # 네이버 금융 투자자별 매매동향
-    url = "https://finance.naver.com/sise/sise_trans_style.naver"
+# --- 함수: 수급 정보 ---
+def get_market_investors():
+    url = "https://finance.naver.com/"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://finance.naver.com/'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    result = {
+        "kospi_foreigner": 0, "kospi_institution": 0,
+        "kosdaq_foreigner": 0,
+        "futures_foreigner": 0,
+        "raw_data": {}
     }
     try:
         response = requests.get(url, headers=headers, timeout=5)
-        # cp949 또는 euc-kr 인코딩
         html = response.content.decode('euc-kr', 'replace')
         soup = BeautifulSoup(html, 'html.parser')
         
-        # '시간대별' 테이블이 아니라 상단의 '당일 추이' 값을 찾아야 함
-        # 보통 class='type2' 테이블의 첫 번째 데이터 행이 당일 누적치임
-        table = soup.find('table', class_='type2')
-        if not table: return None
+        def parse_amount(text):
+            try:
+                clean_text = re.sub(r'[^\d\-]', '', text)
+                return int(clean_text) if clean_text else 0
+            except: return 0
 
-        # 행들 추출
-        rows = table.find_all('tr')
-        
-        for row in rows:
-            cols = row.find_all('td')
-            # 컬럼이 충분히 있고, 첫 번째 컬럼(시간)에 숫자나 시간이 포함된 경우
-            if len(cols) >= 4:
-                time_txt = cols[0].text.strip()
-                # 시간(09:00~) 또는 장마감(15:30 등) 텍스트가 있는 행 찾기
-                if re.search(r'\d{2}:\d{2}', time_txt):
-                    # 순서: 시간 | 개인 | 외국인 | 기관
-                    personal = cols[1].text.strip()
-                    foreigner = cols[2].text.strip()
-                    institution = cols[3].text.strip()
+        investor_tables = soup.select('.tbl_home')
+        for tbl in investor_tables:
+            if "외국인" in tbl.text and "기관" in tbl.text:
+                rows = tbl.select('tr')
+                for row in rows:
+                    th = row.select_one('th')
+                    if not th: continue
+                    label = th.text.strip()
+                    cols = row.select('td')
                     
-                    # 데이터가 비어있지 않으면 반환
-                    if personal and foreigner:
-                        return {"개인": personal, "외국인": foreigner, "기관": institution}
-        return None
-    except Exception:
-        return None
+                    if "거래소" in label or "코스피" in label:
+                        if len(cols) >= 2:
+                            result["kospi_foreigner"] = parse_amount(cols[1].text)
+                            result["raw_data"]["kospi_foreigner"] = cols[1].text.strip()
+                            result["kospi_institution"] = parse_amount(cols[2].text)
+                    elif "코스닥" in label:
+                        if len(cols) >= 2:
+                            result["kosdaq_foreigner"] = parse_amount(cols[1].text)
+                            result["raw_data"]["kosdaq_foreigner"] = cols[1].text.strip()
+                    elif "선물" in label:
+                        if len(cols) >= 2:
+                            result["futures_foreigner"] = parse_amount(cols[1].text)
+                            result["raw_data"]["futures_foreigner"] = cols[1].text.strip()
+        return result
+    except Exception: return None
 
-# --- 함수: 뉴스 크롤링 (연준/국내) ---
+# --- 함수: 뉴스 크롤링 ---
 def get_financial_news():
     news_data = {"fed": [], "korea": []}
     headers = {'User-Agent': 'Mozilla/5.0'}
-    
     try:
-        # 1. 국내 주요 뉴스 (네이버 금융 메인)
         url_kr = "https://finance.naver.com/news/mainnews.naver"
         res_kr = requests.get(url_kr, headers=headers, timeout=5)
         soup_kr = BeautifulSoup(res_kr.content.decode('euc-kr', 'replace'), 'html.parser')
         
-        # 주요 뉴스 리스트 추출
-        articles = soup_kr.select('.block1 a') # 썸네일 제외 텍스트 링크
+        articles = soup_kr.select('.block1 a')
         count = 0
         for ar in articles:
             title = ar.text.strip()
             link = "https://finance.naver.com" + ar['href']
-            if title and count < 5:
+            if title and count < 4:
                 news_data["korea"].append({"title": title, "link": link})
                 count += 1
 
-        # 2. 해외/연준 관련 뉴스 (해외증시 섹션)
         url_fed = "https://finance.naver.com/news/news_list.naver?mode=LSS2D&section_id=101&section_id2=258" 
         res_fed = requests.get(url_fed, headers=headers, timeout=5)
         soup_fed = BeautifulSoup(res_fed.content.decode('euc-kr', 'replace'), 'html.parser')
         
-        # '연준', 'Fed', '금리', 'FOMC', '파월' 키워드 필터링
-        fed_keywords = ['연준', 'Fed', 'FED', '금리', 'FOMC', '파월', '물가', '긴축', '부양']
-        
+        fed_keywords = ['연준', 'Fed', 'FED', '금리', 'FOMC', '파월', '물가', '긴축', '부양', '엔비디아', '반도체']
         fed_articles = soup_fed.select('.newsList li dl')
         fed_count = 0
-        
         for item in fed_articles:
-            # 제목 추출 (dt 안에 a가 있을수도, dd 안에 있을수도 있음)
             subject_tag = item.select_one('.articleSubject a')
             if not subject_tag: continue
-            
             title = subject_tag.text.strip()
             link = "https://finance.naver.com" + subject_tag['href']
             summary_tag = item.select_one('.articleSummary')
             summary = summary_tag.text.strip()[:60] + "..." if summary_tag else ""
-            
-            # 키워드 매칭
             if any(k in title for k in fed_keywords) or any(k in summary for k in fed_keywords):
                 if fed_count < 4:
                     news_data["fed"].append({"title": title, "link": link, "summary": summary})
                     fed_count += 1
-                    
-    except Exception:
-        pass
-        
+    except: pass
     return news_data
 
-# --- 함수: 데이터 가져오기 (주식) ---
+# --- 함수: 데이터 가져오기 ---
 def get_all_data():
     tickers = {
         "tnx": "^TNX",   # 미국 10년물 국채
         "oil": "CL=F",   # WTI 유가
         "krw": "KRW=X",  # 원/달러 환율
+        "sox": "^SOX",   # 필라델피아 반도체
         "kospi": "^KS11", # 코스피
         "kosdaq": "^KQ11" # 코스닥
     }
@@ -317,22 +306,21 @@ def get_all_data():
                 if len(df) == 1: df = pd.concat([df, df])
             data[key] = df
         return data, None
-    except Exception as e:
-        return None, e
+    except Exception as e: return None, e
 
 # --- 메인 헤더 ---
 weather = get_weather("Daejeon")
 now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 시장 위험도 분석 </div>
+<div class="header-title">📊 위험도 분석</div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} 기준</div>
 <hr>
 """, unsafe_allow_html=True)
 
 # --- 데이터 로딩 ---
 raw_data, error = get_all_data()
-investor_data = get_kr_market_investors()
+investor_data = get_market_investors()
 news_data = get_financial_news()
 
 if error:
@@ -351,6 +339,7 @@ else:
     tnx_val, tnx_diff, tnx_pct = get_info(raw_data['tnx'])
     oil_val, oil_diff, oil_pct = get_info(raw_data['oil'])
     krw_val, krw_diff, krw_pct = get_info(raw_data['krw'])
+    sox_val, sox_diff, sox_pct = get_info(raw_data['sox'])
     kospi_val, kospi_diff, kospi_pct = get_info(raw_data['kospi'])
     kosdaq_val, kosdaq_diff, kosdaq_pct = get_info(raw_data['kosdaq'])
 
@@ -369,6 +358,7 @@ else:
         {make_card("🇺🇸 미국채 10년", tnx_val, tnx_diff, True)}
         {make_card("🛢️ 유가", oil_val, oil_diff)}
         {make_card("🇰🇷 환율", krw_val, krw_diff)}
+        {make_card("💾 반도체(SOX)", sox_val, sox_pct, True)}
         {make_card("📉 코스피", kospi_val, kospi_pct, True)}
         {make_card("📉 코스닥", kosdaq_val, kosdaq_pct, True)}
     </div>
@@ -377,37 +367,83 @@ else:
     st.caption("↔️ 좌우로 스크롤하여 모든 지표를 확인하세요.")
     st.markdown("---")
 
-    # 2. 100점 만점 위험도 계산
-    def map_score(value, min_val, max_val, max_score=25):
-        if value <= min_val: return 0
-        if value >= max_val: return max_score
-        return (value - min_val) / (max_val - min_val) * max_score
+    # 2. 종합 위험도 계산 (7개 항목 -> 평균 100점)
+    def calc_score(val, min_risk, max_risk):
+        if val <= min_risk: return 0
+        if val >= max_risk: return 100
+        return (val - min_risk) / (max_risk - min_risk) * 100
 
-    total_risk_score = 0
+    scores = []
     reasons = []
+    
+    # 단독 위험 발생 시 경고 격상을 위한 변수
+    max_single_risk = 0 
 
-    # 국채 (3.8~4.5%)
-    tnx_score = map_score(tnx_val, 3.80, 4.50, 25)
-    total_risk_score += tnx_score
-    if tnx_score >= 10: reasons.append(f"국채금리 {tnx_val:.2f}% (위험도 {int(tnx_score)}/25)")
+    # (1) 국채 금리: 3.5% ~ 5.0%
+    s_tnx = calc_score(tnx_val, 3.50, 5.00)
+    scores.append(s_tnx)
+    max_single_risk = max(max_single_risk, s_tnx)
+    if s_tnx >= 50: reasons.append(f"국채금리 부담 ({tnx_val:.2f}%)")
 
-    # 유가 ($75~$90)
-    oil_score = map_score(oil_val, 75.0, 90.0, 25)
-    total_risk_score += oil_score
-    if oil_score >= 10: reasons.append(f"유가 ${oil_val:.2f} (위험도 {int(oil_score)}/25)")
+    # (2) 유가: $65 ~ $100
+    s_oil = calc_score(oil_val, 65.0, 100.0)
+    scores.append(s_oil)
+    max_single_risk = max(max_single_risk, s_oil)
+    if s_oil >= 50: reasons.append(f"유가 상승세 (${oil_val:.2f})")
 
-    # 환율 (1350~1450원)
-    krw_score = map_score(krw_val, 1350, 1450, 25)
-    total_risk_score += krw_score
-    if krw_score >= 10: reasons.append(f"환율 {krw_val:.0f}원 (위험도 {int(krw_score)}/25)")
+    # (3) 환율: 1350원 ~ 1550원
+    s_krw = calc_score(krw_val, 1350, 1550)
+    scores.append(s_krw)
+    max_single_risk = max(max_single_risk, s_krw)
+    if s_krw >= 50: reasons.append(f"고환율 지속 ({krw_val:.0f}원)")
 
-    # 증시 급락 (-0.5% ~ -2.5%)
-    market_drop = min(kospi_pct, kosdaq_pct)
-    market_score = map_score(-market_drop, 0.5, 2.5, 25)
-    total_risk_score += market_score
-    if market_score >= 10: reasons.append(f"증시 변동성 {market_drop:.2f}% (위험도 {int(market_score)}/25)")
+    # (4) 반도체(SOX) 낙폭: -1% ~ -5%
+    sox_drop = -sox_pct if sox_pct < 0 else 0
+    s_sox = calc_score(sox_drop, 1.0, 5.0)
+    scores.append(s_sox)
+    max_single_risk = max(max_single_risk, s_sox)
+    if s_sox >= 50: reasons.append(f"반도체 지수 급락 ({sox_pct:.2f}%)")
 
-    final_score = int(total_risk_score)
+    # (5) 국내 증시 낙폭: -3.0% ~ -5.0% (가중치 1/10 적용)
+    market_drop = -min(kospi_pct, kosdaq_pct) if min(kospi_pct, kosdaq_pct) < 0 else 0
+    s_mkt = calc_score(market_drop, 3.0, 5.0)
+    scores.append(s_mkt * 0.1) # 평균 점수에는 조금만 반영
+    # 단, 단독 위험 판단 시에는 원래 점수 고려 (폭락 시 강제 경고용)
+    max_single_risk = max(max_single_risk, s_mkt) 
+    if s_mkt > 0: reasons.append(f"증시 폭락 발생 ({min(kospi_pct, kosdaq_pct):.2f}%)")
+
+    # (6) 현물 수급: 5000억 매도 기준
+    s_supply = 0
+    if investor_data:
+        net_buy = investor_data['kospi_foreigner']
+        if net_buy < 0:
+            s_supply = calc_score(abs(net_buy), 0, 5000)
+        scores.append(s_supply)
+        max_single_risk = max(max_single_risk, s_supply)
+        if s_supply >= 50: reasons.append(f"외국인 현물 매도 ({net_buy}억)")
+    else: scores.append(0)
+
+    # (7) 선물 수급: 1조원 매도 기준
+    s_futures = 0
+    if investor_data:
+        fut_net_buy = investor_data['futures_foreigner']
+        if fut_net_buy < 0:
+            s_futures = calc_score(abs(fut_net_buy), 0, 10000)
+        scores.append(s_futures)
+        max_single_risk = max(max_single_risk, s_futures)
+        if s_futures >= 50: reasons.append(f"외국인 선물 매도 ({fut_net_buy}억)")
+    else: scores.append(0)
+
+    # 평균 점수 산출
+    final_score = int(sum(scores) / len(scores))
+    
+    # [중요 수정] 평균은 낮아도, 단독 위험이 높으면 최소 '주의' 이상으로 보정
+    # 예: 환율만 1550원이고 나머지가 정상이면 평균은 낮지만, 위험도는 높여야 함
+    if max_single_risk >= 80:
+        final_score = max(final_score, 60) # 최소 '높음' 단계
+    elif max_single_risk >= 60:
+        final_score = max(final_score, 40) # 최소 '경계' 단계
+
     display_percent = max(min(final_score, 100), 2)
 
     # 3. 위험도 바 렌더링
@@ -439,49 +475,48 @@ else:
     """
     st.markdown(risk_bar_html, unsafe_allow_html=True)
 
-    # 4. 행동 가이드
+    # 4. 행동 가이드 (민감도 조정됨: 기준 점수 하향)
     guide_msg = ""
     guide_bg = ""
     level_text = ""
 
-    if final_score >= 85:
+    if final_score >= 80:
         level_text = "위험도 [최고조] - 시장 붕괴"
         guide_msg = "공황 상태입니다. 매매 중단, 현금 100%."
         guide_bg = "#ffebee"
-    elif final_score >= 70:
-        level_text = "위험도 [매우 높음] - 폭락 경보"
-        guide_msg = "소나기입니다. 반등 시 현금 확보."
-        guide_bg = "#ffebee"
-    elif final_score >= 50:
+    elif final_score >= 60:
         level_text = "위험도 [높음] - 하락장"
-        guide_msg = "보수적 대응. 물타기 금지."
-        guide_bg = "#fff3e0"
-    elif final_score >= 35:
+        guide_msg = "보수적 대응. 현금 비중 확대 필요."
+        guide_bg = "#ffebee"
+    elif final_score >= 40:
         level_text = "위험도 [경계] - 관망"
-        guide_msg = "신규 진입 자제. 리스크 관리."
+        guide_msg = "신규 진입 자제. 리스크 관리 집중."
         guide_bg = "#fff3e0"
-    elif final_score >= 20:
+    elif final_score >= 20: # 기존 20은 너무 낮았음 -> 적절 (하지만 평균 희석 감안)
         level_text = "위험도 [주의] - 변동성"
         guide_msg = "분할 매수로 대응하세요."
         guide_bg = "#fffde7"
-    elif final_score >= 10:
+    elif final_score >= 10: # 10점만 넘어도 '양호'로 (기존 0~19가 안전이었음)
         level_text = "위험도 [양호] - 투자 적기"
-        guide_msg = "실적주 위주로 매수하세요."
-        guide_bg = "#f1f8e9"
+        guide_msg = "시장이 안정적입니다. 적극 투자 구간."
+        guide_bg = "#e8f5e9"
     else:
         level_text = "위험도 [최상] - 적극 매수"
         guide_msg = "골디락스 구간입니다. 수익 극대화!"
         guide_bg = "#e8f5e9"
 
-    # 수급 정보 HTML
-    if investor_data:
+    if investor_data and investor_data.get('kospi_foreigner') != 0:
+        raw = investor_data['raw_data']
+        k_for = raw.get('kospi_foreigner', '0')
+        f_for = raw.get('futures_foreigner', '0')
         investor_content = f"""
-        <span style="color:#d62728; font-weight:bold;">개인: {investor_data['개인']}</span> &nbsp;|&nbsp; 
-        <span style="color:#1f77b4; font-weight:bold;">외국인: {investor_data['외국인']}</span> &nbsp;|&nbsp; 
-        <span style="color:#2ca02c; font-weight:bold;">기관: {investor_data['기관']}</span>
+        <div style="display:flex; justify-content:space-between; flex-wrap:wrap;">
+            <span>📉 현물(코스피) 외국인: <b>{k_for}억</b></span>
+            <span>📉 선물 외국인: <b>{f_for}억</b></span>
+        </div>
         """
     else:
-        investor_content = "<span style='color:#999;'>수급 정보 로딩 중... (장 시작 전이거나 집계 지연)</span>"
+        investor_content = "<span style='color:#999;'>수급 정보 집계 중... (장 시작 전이거나 데이터 없음)</span>"
 
     if reasons:
         reason_items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in reasons])
@@ -489,27 +524,24 @@ else:
     else:
         reason_content = "<p style='margin-top:5px; color:#2e7d32; font-weight:bold;'>✅ 특이 사항 없음</p>"
 
-    # 가이드 박스 출력
     guide_html = f"""
     <div class="guide-box" style="background-color: {guide_bg};">
         <div class="guide-header">👉 현재 상태: {level_text}</div>
         <p style="font-weight:bold; font-size:16px; margin-bottom:15px;">{guide_msg}</p>
         <div style="border-top: 1px solid rgba(0,0,0,0.1); padding-top:15px;">
-            <strong>🚨 주요 위험 요인:</strong>
+            <strong>🚨 위험 요인 (항목별 감점):</strong>
             {reason_content}
         </div>
         <div class="investor-box">
-            <strong style="display:block; margin-bottom:5px;">💰 코스피 수급 (오늘 누적):</strong>
+            <strong style="display:block; margin-bottom:5px;">💰 외국인 수급 현황 (추정):</strong>
             {investor_content}
         </div>
     </div>
     """
     st.markdown(guide_html, unsafe_allow_html=True)
     
-    # --- 5. 추가 정보 섹션 (뉴스) ---
     st.markdown("---")
     c1, c2 = st.columns(2)
-    
     with c1:
         st.markdown("### 🇺🇸 연준(Fed) & 글로벌 브리핑")
         if news_data and news_data['fed']:
@@ -521,9 +553,7 @@ else:
                     <div class="news-meta">{item['summary']}</div>
                 </div>
                 """, unsafe_allow_html=True)
-        else:
-            st.info("연준 관련 최신 주요 뉴스가 없습니다.")
-            
+        else: st.info("관련 주요 뉴스가 없습니다.")
     with c2:
         st.markdown("### 🇰🇷 국내 증시 주요 체크")
         if news_data and news_data['korea']:
@@ -533,21 +563,21 @@ else:
                     <a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a>
                 </div>
                 """, unsafe_allow_html=True)
-        else:
-            st.info("국내 주요 뉴스를 불러오지 못했습니다.")
+        else: st.info("국내 주요 뉴스를 불러오지 못했습니다.")
 
     st.markdown("---")
-    
-    with st.expander("📜 100점 만점 기준 가이드라인 보기"):
+    with st.expander("📜 위험도 산정 기준 (종합 평균 + 단독 위험 보정)"):
         st.markdown("""
-        | 위험 점수 | 상태 | 행동 요령 |
-        |---|---|---|
-        | **85~100** | 🌪️ 붕괴 | 현금 100% 확보. |
-        | **70~84** | ☔️ 폭락 | 투매 금지. 반등 시 매도. |
-        | **50~69** | 🌧️ 하락 | 물타기 금지. 보수적 대응. |
-        | **35~49** | ☁️ 경계 | 신규 매수 자제. 현금 확대. |
-        | **20~34** | ⛅️ 주의 | 변동성 구간. 분할 매매. |
-        | **10~19** | 🌤️ 양호 | 실적주 매수 대응. |
-        | **0~9** | ☀️ 최상 | 적극 매수 구간. |
+        **총 7개 항목의 평균 점수를 기반으로 하되, 단 하나의 항목이라도 치명적이면 경고 단계를 격상합니다.**
+        1. **국채금리:** 3.5% 이상 시 위험 증가 (5.0% 만점)
+        2. **유가:** $65 이상 시 위험 증가 ($100 만점)
+        3. **환율:** 1,350원 이상 시 위험 증가 (1,550원 만점)
+        4. **반도체(SOX):** 전일 대비 하락 시 위험 증가 (-5% 만점)
+        5. **국내증시:** -3% 이상 폭락 시 위험 급증 (가중치 0.1배)
+        6. **현물 수급:** 외국인 코스피 5천억 매도 만점
+        7. **선물 수급:** 외국인 선물 1조원 매도 만점
         """)
 
+    # --- 5분 자동 새로고침 ---
+    time.sleep(300)
+    st.rerun()
