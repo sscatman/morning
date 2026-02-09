@@ -13,28 +13,27 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 스타일링 (CSS) ---
+# --- 스타일링 (CSS) 수정됨 ---
 st.markdown("""
     <style>
-    /* 기본 폰트 색상 및 스타일 */
-    body, p, h1, h2, h3, h4, div, span, label, li, a {
-        color: #111 !important;
-        font-family: 'Pretendard', sans-serif;
-        text-decoration: none;
+    /* 1. 폰트 패밀리만 전역 설정 (색상 강제 제거) */
+    * {
+        font-family: 'Pretendard', sans-serif !important;
     }
     
+    /* 2. 헤더 타이틀: 테마에 따라 자동 변환 */
     .header-title {
         font-size: 24px !important;
         font-weight: bold;
         margin-bottom: 5px;
-        color: #000 !important;
+        /* 색상 지정 삭제 -> 다크모드 자동 대응 */
     }
     .sub-info {
         font-size: 14px;
-        color: #555 !important;
+        opacity: 0.8; /* 색상 대신 투명도 사용 */
     }
     
-    /* 가로 스크롤 카드 컨테이너 */
+    /* 3. 가로 스크롤 카드 (배경이 흰색이므로 글씨는 검은색 강제) */
     .scroll-container {
         display: flex;
         overflow-x: auto;
@@ -44,7 +43,7 @@ st.markdown("""
         -webkit-overflow-scrolling: touch;
     }
     .metric-card {
-        background-color: #ffffff;
+        background-color: #ffffff; /* 흰색 배경 고정 */
         border: 1px solid #e0e0e0;
         border-radius: 12px;
         padding: 15px;
@@ -54,12 +53,12 @@ st.markdown("""
         display: inline-block;
     }
     .metric-title { font-size: 13px; color: #666 !important; margin-bottom: 5px; }
-    .metric-value { font-size: 18px; font-weight: 800; color: #000 !important; }
+    .metric-value { font-size: 18px; font-weight: 800; color: #000 !important; } /* 검은색 강제 */
     .metric-delta { font-size: 12px; font-weight: 600; margin-top: 2px; }
     .plus { color: #d62728 !important; }
     .minus { color: #1f77b4 !important; }
 
-    /* 위험도 바 스타일 */
+    /* 4. 위험도 바 스타일 */
     .risk-wrapper {
         position: relative;
         width: 100%;
@@ -97,7 +96,7 @@ st.markdown("""
         line-height: 33px;
         font-weight: 800;
         font-size: 14px;
-        color: #333;
+        color: #333 !important; /* 배경이 흰색이므로 검은글씨 */
         border: 2px solid;
         z-index: 10;
         transition: left 1s cubic-bezier(0.4, 0, 0.2, 1);
@@ -121,7 +120,7 @@ st.markdown("""
         width: 100%;
         display: flex;
         justify-content: space-between;
-        color: #999 !important;
+        color: #999; /* 기본 회색 */
         font-size: 11px;
         font-weight: bold;
     }
@@ -130,7 +129,7 @@ st.markdown("""
         content: ''; position: absolute; top: -8px; left: 50%; width: 1px; height: 6px; background-color: #ccc;
     }
 
-    /* 행동 가이드 및 뉴스 박스 */
+    /* 5. 행동 가이드 박스 (배경이 밝은색이므로 글씨는 검은색 강제) */
     .guide-box {
         padding: 20px;
         background-color: #ffffff;
@@ -138,31 +137,53 @@ st.markdown("""
         border: 1px solid #eee;
         box-shadow: 0 4px 12px rgba(0,0,0,0.03);
         margin-bottom: 20px;
+        color: #111 !important; /* 내부 텍스트 검은색 강제 */
     }
     .guide-header {
         font-size: 18px;
         font-weight: 800;
         margin-bottom: 10px;
-        color: #222 !important;
+        color: #000 !important;
     }
+    /* 가이드 박스 내부의 p 태그 등도 검은색 강제 */
+    .guide-box p, .guide-box li, .guide-box span, .guide-box div {
+        color: #111;
+    }
+    
     .investor-box {
         margin-top: 15px;
         padding: 12px;
-        background-color: #f8f9fa;
+        background-color: #f8f9fa; /* 밝은 회색 배경 */
         border-radius: 8px;
         border: 1px solid #eee;
         font-size: 13px;
+        color: #111 !important;
     }
     
-    /* 뉴스 리스트 스타일 */
+    /* 6. 뉴스 리스트 (배경 없음 -> 다크모드 자동 적응) */
     .news-item {
         padding: 8px 0;
-        border-bottom: 1px solid #f0f0f0;
+        border-bottom: 1px solid #f0f0f0; /* 다크모드에선 흐리게 보일 수 있음, 투명도 조절 권장 */
         font-size: 14px;
     }
+    @media (prefers-color-scheme: dark) {
+        .news-item { border-bottom: 1px solid #444; }
+    }
     .news-item:last-child { border-bottom: none; }
-    .news-title { font-weight: 600; color: #333 !important; display: block; margin-bottom: 2px; }
-    .news-meta { font-size: 12px; color: #888 !important; }
+    
+    .news-title { 
+        font-weight: 600; 
+        /* color: #333 !important; 삭제 -> 테마 따름 */
+        display: block; 
+        margin-bottom: 2px; 
+    }
+    /* 뉴스 제목 링크 스타일 */
+    a.news-title:hover {
+        text-decoration: underline;
+        color: #2979ff !important;
+    }
+    
+    .news-meta { font-size: 12px; opacity: 0.7; }
     .fed-badge { 
         background-color: #e3f2fd; color: #1565c0 !important; 
         padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-right: 5px;
