@@ -3,13 +3,13 @@ import yfinance as yf
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 import time
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.2)",
+    page_title="위험도 분석 (V0.3)",
     page_icon="📊",
     layout="wide"
 )
@@ -76,7 +76,7 @@ st.markdown("""
         margin-top: 3px;
     }
 
-    /* 4. 메인 위험도 바 스타일 (기존 유지) */
+    /* 4. 메인 위험도 바 스타일 */
     .risk-wrapper {
         position: relative;
         width: 100%;
@@ -234,7 +234,8 @@ if st.button('🔄 전체 데이터 새로고침', use_container_width=True):
 # --- 함수: 날씨 ---
 def get_weather(city="Daejeon"):
     try:
-        url = f"https://wttr.in/{city}?format=%C+%t"
+        # 캐시 방지를 위한 타임스탬프 추가
+        url = f"https://wttr.in/{city}?format=%C+%t&_={int(time.time())}"
         response = requests.get(url, timeout=2)
         if response.status_code == 200: return response.text.strip()
         return "N/A"
@@ -279,11 +280,17 @@ def get_market_investors():
         return result
     except: return None
 
-# --- 함수: 뉴스 크롤링 ---
+# --- 함수: 뉴스 크롤링 (반도체/미국증시 중심) ---
 def get_financial_news():
-    news_data = {"fed": [], "korea": []}
+    news_data = {"us_tech": [], "korea_semi": []}
     headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    # 키워드 정의
+    keywords_us = ['나스닥', 'S&P', '엔비디아', '테슬라', '애플', '마이크론', 'TSMC', '반도체', 'AI', '뉴욕증시', '미증시']
+    keywords_kr_semi = ['삼성전자', 'SK하이닉스', '하이닉스', '반도체', 'HBM', '삼전', '소부장']
+    
     try:
+        # 1. 국내 뉴스 (반도체 위주 필터링)
         url_kr = "https://finance.naver.com/news/mainnews.naver"
         res_kr = requests.get(url_kr, headers=headers, timeout=5)
         soup_kr = BeautifulSoup(res_kr.content.decode('euc-kr', 'replace'), 'html.parser')
@@ -293,17 +300,22 @@ def get_financial_news():
         for ar in articles:
             title = ar.text.strip()
             link = "https://finance.naver.com" + ar['href']
-            if title and count < 4:
-                news_data["korea"].append({"title": title, "link": link})
+            
+            # 반도체 키워드가 있으면 우선 수집, 없으면 일반 뉴스 (최대 5개)
+            is_semi = any(k in title for k in keywords_kr_semi)
+            if count < 5:
+                # 반도체 뉴스면 앞에 이모지 추가해서 강조
+                display_title = f"💾 {title}" if is_semi else title
+                news_data["korea_semi"].append({"title": display_title, "link": link})
                 count += 1
 
+        # 2. 해외 뉴스 (미국 증시/반도체 위주)
         url_fed = "https://finance.naver.com/news/news_list.naver?mode=LSS2D&section_id=101&section_id2=258" 
         res_fed = requests.get(url_fed, headers=headers, timeout=5)
         soup_fed = BeautifulSoup(res_fed.content.decode('euc-kr', 'replace'), 'html.parser')
         
-        fed_keywords = ['연준', 'Fed', 'FED', '금리', 'FOMC', '파월', '물가', '긴축', '부양', '엔비디아', '반도체']
         fed_articles = soup_fed.select('.newsList li dl')
-        fed_count = 0
+        us_count = 0
         for item in fed_articles:
             subject_tag = item.select_one('.articleSubject a')
             if not subject_tag: continue
@@ -311,14 +323,16 @@ def get_financial_news():
             link = "https://finance.naver.com" + subject_tag['href']
             summary_tag = item.select_one('.articleSummary')
             summary = summary_tag.text.strip()[:60] + "..." if summary_tag else ""
-            if any(k in title for k in fed_keywords) or any(k in summary for k in fed_keywords):
-                if fed_count < 4:
-                    news_data["fed"].append({"title": title, "link": link, "summary": summary})
-                    fed_count += 1
+            
+            # 미국 증시/반도체 관련 키워드 매칭
+            if any(k in title for k in keywords_us) or any(k in summary for k in keywords_us):
+                if us_count < 5:
+                    news_data["us_tech"].append({"title": title, "link": link, "summary": summary})
+                    us_count += 1
     except: pass
     return news_data
 
-# --- 함수: 데이터 가져오기 (미국 증시 추가) ---
+# --- 함수: 데이터 가져오기 (미국 증시 포함) ---
 def get_all_data():
     tickers = {
         "tnx": "^TNX",   # 미국 10년물 국채
@@ -342,11 +356,13 @@ def get_all_data():
 
 # --- 메인 헤더 ---
 weather = get_weather("Daejeon")
-now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+# [수정] 한국 시간(KST) 적용: UTC + 9시간
+kst_now = datetime.utcnow() + timedelta(hours=9)
+now_str = kst_now.strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 위험도 분석 (V0.2)</div>
-<div class="sub-info">📍 대전: {weather} | 🕒 {now_str} 기준</div>
+<div class="header-title">📊 위험도 분석 (V0.3)</div>
+<div class="sub-info">📍 대전: {weather} | 🕒 {now_str} (KST)</div>
 <hr>
 """, unsafe_allow_html=True)
 
@@ -382,11 +398,9 @@ else:
     def draw_mini_gauge(title, value, display_text, min_val, max_val, color_mode='risk'):
         # color_mode: 'risk' (Low=Good, High=Bad), 'stock' (Low=Bad, High=Good)
         
-        # 퍼센트 계산 (0~100)
         pct = (value - min_val) / (max_val - min_val) * 100
         pct = max(0, min(pct, 100))
         
-        # 배경 그라데이션 설정
         if color_mode == 'risk': # 왼쪽(초록) -> 오른쪽(빨강)
             bg_gradient = "linear-gradient(90deg, #4CAF50 0%, #FFEB3B 50%, #F44336 100%)"
         else: # 주식: 왼쪽(파랑/하락) -> 중앙(회색) -> 오른쪽(빨강/상승)
@@ -417,6 +431,8 @@ else:
         st.markdown(draw_mini_gauge("🇺🇸 국채 10년", tnx_val, f"{tnx_val:.2f}%", 3.0, 5.5, 'risk'), unsafe_allow_html=True)
         # 반도체 지수 (-5% ~ +5%) - 주식지표
         st.markdown(draw_mini_gauge("💾 반도체(SOX)", sox_pct, f"{sox_pct:+.2f}%", -5.0, 5.0, 'stock'), unsafe_allow_html=True)
+        # 나스닥 (-3% ~ +3%) - 주식지표
+        st.markdown(draw_mini_gauge("🇺🇸 나스닥", nas_pct, f"{nas_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
         
     with col2:
         # 유가 ($60 ~ $100) - 위험지표
@@ -432,7 +448,7 @@ else:
 
     st.markdown("---")
 
-    # 2. 종합 위험도 계산 (로직 유지)
+    # 2. 종합 위험도 계산 (9개 항목 평균)
     def calc_score(val, min_risk, max_risk):
         if val <= min_risk: return 0
         if val >= max_risk: return 100
@@ -480,7 +496,20 @@ else:
     if s_mkt > 0: reasons.append(f"증시 폭락 발생 ({min(kospi_pct, kosdaq_pct):.2f}%)")
     elif kospi_pct > 0: positive_factors.append(f"코스피 상승 (+{kospi_pct:.2f}%)")
 
-    # (6,7) 수급
+    # (6,7) 미국 지수(S&P, 나스닥) 낙폭: -1.0% ~ -3.0%
+    # S&P500
+    sp5_drop = -sp5_pct if sp5_pct < 0 else 0
+    s_sp5 = calc_score(sp5_drop, 1.0, 3.0)
+    scores.append(s_sp5)
+    if s_sp5 >= 50: reasons.append(f"S&P500 하락세 ({sp5_pct:.2f}%)")
+    
+    # 나스닥
+    nas_drop = -nas_pct if nas_pct < 0 else 0
+    s_nas = calc_score(nas_drop, 1.5, 4.0) # 나스닥은 변동성이 더 크므로 기준 완화
+    scores.append(s_nas)
+    if s_nas >= 50: reasons.append(f"나스닥 급락 ({nas_pct:.2f}%)")
+
+    # (8,9) 수급
     s_supply, s_futures = 0, 0
     net_buy, fut_net_buy = 0, 0
     if investor_data:
@@ -529,6 +558,7 @@ else:
     if s_oil >= 40: bad_factors.append("유가 상승")
     if s_supply >= 40 or s_futures >= 40: bad_factors.append("외인 매도")
     if s_sox >= 40: bad_factors.append("반도체 약세")
+    if s_nas >= 40: bad_factors.append("미국장 하락")
     
     if s_tnx < 20: good_factors.append("금리 안정")
     if s_krw < 20: good_factors.append("환율 안정")
@@ -581,15 +611,15 @@ else:
     st.markdown("---")
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("### 🇺🇸 연준(Fed) & 글로벌 브리핑")
-        if news_data and news_data['fed']:
-            for item in news_data['fed']:
-                st.markdown(f"""<div class="news-item"><span class="fed-badge">Fed/금리</span><a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a><div class="news-meta">{item['summary']}</div></div>""", unsafe_allow_html=True)
+        st.markdown("### 🇺🇸 미국 증시 & 반도체 뉴스")
+        if news_data and news_data['us_tech']:
+            for item in news_data['us_tech']:
+                st.markdown(f"""<div class="news-item"><span class="fed-badge">미국/반도체</span><a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a><div class="news-meta">{item['summary']}</div></div>""", unsafe_allow_html=True)
         else: st.info("관련 주요 뉴스가 없습니다.")
     with c2:
-        st.markdown("### 🇰🇷 국내 증시 주요 체크")
-        if news_data and news_data['korea']:
-            for item in news_data['korea']:
+        st.markdown("### 🇰🇷 국내 반도체/증시 주요 뉴스")
+        if news_data and news_data['korea_semi']:
+            for item in news_data['korea_semi']:
                 st.markdown(f"""<div class="news-item"><a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a></div>""", unsafe_allow_html=True)
         else: st.info("국내 주요 뉴스를 불러오지 못했습니다.")
 
