@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+import re
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
@@ -16,9 +17,10 @@ st.set_page_config(
 st.markdown("""
     <style>
     /* 기본 폰트 색상 및 스타일 */
-    body, p, h1, h2, h3, h4, div, span, label, li {
+    body, p, h1, h2, h3, h4, div, span, label, li, a {
         color: #111 !important;
         font-family: 'Pretendard', sans-serif;
+        text-decoration: none;
     }
     
     .header-title {
@@ -57,7 +59,7 @@ st.markdown("""
     .plus { color: #d62728 !important; }
     .minus { color: #1f77b4 !important; }
 
-    /* --- 개선된 위험도 바 (그라데이션 + 포인트) --- */
+    /* 위험도 바 스타일 */
     .risk-wrapper {
         position: relative;
         width: 100%;
@@ -66,7 +68,6 @@ st.markdown("""
         margin-bottom: 10px;
         padding: 0 10px;
     }
-    
     .risk-track {
         position: absolute;
         top: 45px;
@@ -77,15 +78,12 @@ st.markdown("""
         border-radius: 7px;
         overflow: hidden;
     }
-    
     .risk-fill {
         height: 100%;
         border-radius: 7px;
-        /* 초록 -> 노랑 -> 빨강 그라데이션 */
         background: linear-gradient(90deg, #00e676 0%, #ffeb3b 50%, #ff3d00 100%);
         transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    
     .risk-pointer {
         position: absolute;
         top: 0;
@@ -116,7 +114,6 @@ st.markdown("""
         display: block;
         width: 0;
     }
-
     .risk-scale {
         position: absolute;
         top: 65px;
@@ -128,28 +125,19 @@ st.markdown("""
         font-size: 11px;
         font-weight: bold;
     }
-    .scale-mark {
-        position: relative;
-        width: 30px;
-        text-align: center;
-    }
+    .scale-mark { position: relative; width: 30px; text-align: center; }
     .scale-mark::before {
-        content: '';
-        position: absolute;
-        top: -8px;
-        left: 50%;
-        width: 1px;
-        height: 6px;
-        background-color: #ccc;
+        content: ''; position: absolute; top: -8px; left: 50%; width: 1px; height: 6px; background-color: #ccc;
     }
 
-    /* 행동 가이드 박스 */
+    /* 행동 가이드 및 뉴스 박스 */
     .guide-box {
         padding: 20px;
         background-color: #ffffff;
         border-radius: 12px;
         border: 1px solid #eee;
         box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        margin-bottom: 20px;
     }
     .guide-header {
         font-size: 18px;
@@ -165,11 +153,25 @@ st.markdown("""
         border: 1px solid #eee;
         font-size: 13px;
     }
+    
+    /* 뉴스 리스트 스타일 */
+    .news-item {
+        padding: 8px 0;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: 14px;
+    }
+    .news-item:last-child { border-bottom: none; }
+    .news-title { font-weight: 600; color: #333 !important; display: block; margin-bottom: 2px; }
+    .news-meta { font-size: 12px; color: #888 !important; }
+    .fed-badge { 
+        background-color: #e3f2fd; color: #1565c0 !important; 
+        padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-right: 5px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 상단: 새로고침 버튼 ---
-if st.button('🔄 데이터 새로고침', use_container_width=True):
+if st.button('🔄 전체 데이터 새로고침', use_container_width=True):
     st.rerun()
 
 # --- 함수: 날씨 ---
@@ -183,37 +185,101 @@ def get_weather(city="Daejeon"):
     except:
         return "N/A"
 
-# --- 함수: 수급 정보 (크롤링 강화) ---
+# --- 함수: 수급 정보 (파싱 로직 개선) ---
 def get_kr_market_investors():
+    # 네이버 금융 투자자별 매매동향
     url = "https://finance.naver.com/sise/sise_trans_style.naver"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': 'https://finance.naver.com/'
     }
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=5)
+        # cp949 또는 euc-kr 인코딩
         html = response.content.decode('euc-kr', 'replace')
         soup = BeautifulSoup(html, 'html.parser')
         
+        # '시간대별' 테이블이 아니라 상단의 '당일 추이' 값을 찾아야 함
+        # 보통 class='type2' 테이블의 첫 번째 데이터 행이 당일 누적치임
         table = soup.find('table', class_='type2')
         if not table: return None
 
+        # 행들 추출
         rows = table.find_all('tr')
+        
         for row in rows:
             cols = row.find_all('td')
-            if len(cols) > 8: 
-                personal = cols[1].text.strip()
-                foreigner = cols[2].text.strip()
-                institution = cols[3].text.strip()
-                if personal and foreigner and institution:
-                    return {"개인": personal, "외국인": foreigner, "기관": institution}
+            # 컬럼이 충분히 있고, 첫 번째 컬럼(시간)에 숫자나 시간이 포함된 경우
+            if len(cols) >= 4:
+                time_txt = cols[0].text.strip()
+                # 시간(09:00~) 또는 장마감(15:30 등) 텍스트가 있는 행 찾기
+                if re.search(r'\d{2}:\d{2}', time_txt):
+                    # 순서: 시간 | 개인 | 외국인 | 기관
+                    personal = cols[1].text.strip()
+                    foreigner = cols[2].text.strip()
+                    institution = cols[3].text.strip()
+                    
+                    # 데이터가 비어있지 않으면 반환
+                    if personal and foreigner:
+                        return {"개인": personal, "외국인": foreigner, "기관": institution}
         return None
     except Exception:
         return None
 
-# --- 함수: 데이터 가져오기 ---
+# --- 함수: 뉴스 크롤링 (연준/국내) ---
+def get_financial_news():
+    news_data = {"fed": [], "korea": []}
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    try:
+        # 1. 국내 주요 뉴스 (네이버 금융 메인)
+        url_kr = "https://finance.naver.com/news/mainnews.naver"
+        res_kr = requests.get(url_kr, headers=headers, timeout=5)
+        soup_kr = BeautifulSoup(res_kr.content.decode('euc-kr', 'replace'), 'html.parser')
+        
+        # 주요 뉴스 리스트 추출
+        articles = soup_kr.select('.block1 a') # 썸네일 제외 텍스트 링크
+        count = 0
+        for ar in articles:
+            title = ar.text.strip()
+            link = "https://finance.naver.com" + ar['href']
+            if title and count < 5:
+                news_data["korea"].append({"title": title, "link": link})
+                count += 1
+
+        # 2. 해외/연준 관련 뉴스 (해외증시 섹션)
+        url_fed = "https://finance.naver.com/news/news_list.naver?mode=LSS2D&section_id=101&section_id2=258" 
+        res_fed = requests.get(url_fed, headers=headers, timeout=5)
+        soup_fed = BeautifulSoup(res_fed.content.decode('euc-kr', 'replace'), 'html.parser')
+        
+        # '연준', 'Fed', '금리', 'FOMC', '파월' 키워드 필터링
+        fed_keywords = ['연준', 'Fed', 'FED', '금리', 'FOMC', '파월', '물가', '긴축', '부양']
+        
+        fed_articles = soup_fed.select('.newsList li dl')
+        fed_count = 0
+        
+        for item in fed_articles:
+            # 제목 추출 (dt 안에 a가 있을수도, dd 안에 있을수도 있음)
+            subject_tag = item.select_one('.articleSubject a')
+            if not subject_tag: continue
+            
+            title = subject_tag.text.strip()
+            link = "https://finance.naver.com" + subject_tag['href']
+            summary_tag = item.select_one('.articleSummary')
+            summary = summary_tag.text.strip()[:60] + "..." if summary_tag else ""
+            
+            # 키워드 매칭
+            if any(k in title for k in fed_keywords) or any(k in summary for k in fed_keywords):
+                if fed_count < 4:
+                    news_data["fed"].append({"title": title, "link": link, "summary": summary})
+                    fed_count += 1
+                    
+    except Exception:
+        pass
+        
+    return news_data
+
+# --- 함수: 데이터 가져오기 (주식) ---
 def get_all_data():
     tickers = {
         "tnx": "^TNX",   # 미국 10년물 국채
@@ -246,6 +312,7 @@ st.markdown(f"""
 # --- 데이터 로딩 ---
 raw_data, error = get_all_data()
 investor_data = get_kr_market_investors()
+news_data = get_financial_news()
 
 if error:
     st.error(f"데이터 로딩 실패: {error}")
@@ -266,7 +333,7 @@ else:
     kospi_val, kospi_diff, kospi_pct = get_info(raw_data['kospi'])
     kosdaq_val, kosdaq_diff, kosdaq_pct = get_info(raw_data['kosdaq'])
 
-    # HTML 한 줄 처리
+    # 1. 가로 스크롤 카드
     def make_card(title, value, diff, is_percent=False):
         color_class = "plus" if diff >= 0 else "minus"
         sign = "+" if diff >= 0 else ""
@@ -289,70 +356,47 @@ else:
     st.caption("↔️ 좌우로 스크롤하여 모든 지표를 확인하세요.")
     st.markdown("---")
 
-    # --- [핵심 수정] 100점 만점 정밀 계산 로직 ---
-    # 각 지표별 25점 만점 x 4개 항목 = 100점
-    # 선형 매핑(Linear Mapping) 함수 사용
-    
+    # 2. 100점 만점 위험도 계산
     def map_score(value, min_val, max_val, max_score=25):
-        """값을 범위 내에서 점수로 환산 (0 ~ max_score)"""
         if value <= min_val: return 0
         if value >= max_val: return max_score
-        # 선형 보간
-        score = (value - min_val) / (max_val - min_val) * max_score
-        return score
+        return (value - min_val) / (max_val - min_val) * max_score
 
     total_risk_score = 0
     reasons = []
 
-    # 1. 국채 금리 (25점 만점)
-    # 범위: 3.80%(0점) ~ 4.50%(25점)
+    # 국채 (3.8~4.5%)
     tnx_score = map_score(tnx_val, 3.80, 4.50, 25)
     total_risk_score += tnx_score
-    
-    if tnx_score >= 10: # 중간 이상 위험 시 경고
-        reasons.append(f"국채금리 {tnx_val:.2f}% (위험도 {int(tnx_score)}/25)")
+    if tnx_score >= 10: reasons.append(f"국채금리 {tnx_val:.2f}% (위험도 {int(tnx_score)}/25)")
 
-    # 2. 유가 (25점 만점)
-    # 범위: $75(0점) ~ $90(25점)
+    # 유가 ($75~$90)
     oil_score = map_score(oil_val, 75.0, 90.0, 25)
     total_risk_score += oil_score
-    
-    if oil_score >= 10:
-        reasons.append(f"유가 ${oil_val:.2f} (위험도 {int(oil_score)}/25)")
+    if oil_score >= 10: reasons.append(f"유가 ${oil_val:.2f} (위험도 {int(oil_score)}/25)")
 
-    # 3. 환율 (25점 만점)
-    # 범위: 1350원(0점) ~ 1450원(25점) - 현실화된 기준
+    # 환율 (1350~1450원)
     krw_score = map_score(krw_val, 1350, 1450, 25)
     total_risk_score += krw_score
-    
-    if krw_score >= 10:
-        reasons.append(f"환율 {krw_val:.0f}원 (위험도 {int(krw_score)}/25)")
+    if krw_score >= 10: reasons.append(f"환율 {krw_val:.0f}원 (위험도 {int(krw_score)}/25)")
 
-    # 4. 국내 증시 급락 (25점 만점)
-    # 범위: -0.5%(0점) ~ -2.5%(25점)
-    market_drop = min(kospi_pct, kosdaq_pct) # 하락폭이 큰 것 기준 (음수)
-    # 하락폭을 양수로 변환하여 계산 (-2.5%가 더 큰 위험)
-    drop_magnitude = -market_drop
-    market_score = map_score(drop_magnitude, 0.5, 2.5, 25)
+    # 증시 급락 (-0.5% ~ -2.5%)
+    market_drop = min(kospi_pct, kosdaq_pct)
+    market_score = map_score(-market_drop, 0.5, 2.5, 25)
     total_risk_score += market_score
-    
-    if market_score >= 10:
-        reasons.append(f"증시 변동성 {market_drop:.2f}% (위험도 {int(market_score)}/25)")
+    if market_score >= 10: reasons.append(f"증시 변동성 {market_drop:.2f}% (위험도 {int(market_score)}/25)")
 
-    # 총점 (0~100)
     final_score = int(total_risk_score)
-    # UI 표시용 퍼센트 (최소 2% 보장)
     display_percent = max(min(final_score, 100), 2)
 
-    # --- UI 렌더링 ---
+    # 3. 위험도 바 렌더링
     st.subheader(f"📊 시장 위험도: {final_score}점")
     
-    # 색상 결정
-    if final_score >= 80: pointer_color = "#ff3d00" # 빨강 (심각)
-    elif final_score >= 60: pointer_color = "#ff9100" # 주황 (위험)
-    elif final_score >= 40: pointer_color = "#ffc400" # 노랑 (주의)
-    elif final_score >= 20: pointer_color = "#00e676" # 연두 (보통)
-    else: pointer_color = "#2979ff" # 파랑 (좋음)
+    if final_score >= 80: pointer_color = "#ff3d00"
+    elif final_score >= 60: pointer_color = "#ff9100"
+    elif final_score >= 40: pointer_color = "#ffc400"
+    elif final_score >= 20: pointer_color = "#00e676"
+    else: pointer_color = "#2979ff"
 
     risk_bar_html = f"""
     <div class="risk-wrapper">
@@ -374,42 +418,41 @@ else:
     """
     st.markdown(risk_bar_html, unsafe_allow_html=True)
 
-    # 행동 가이드 내용
+    # 4. 행동 가이드
     guide_msg = ""
     guide_bg = ""
     level_text = ""
 
-    # 점수대별 가이드 (100점 기준)
     if final_score >= 85:
         level_text = "위험도 [최고조] - 시장 붕괴"
-        guide_msg = "공황 상태입니다. 모든 매매를 중단하고 HTS를 끄십시오. 현금이 왕입니다."
+        guide_msg = "공황 상태입니다. 매매 중단, 현금 100%."
         guide_bg = "#ffebee"
     elif final_score >= 70:
         level_text = "위험도 [매우 높음] - 폭락 경보"
-        guide_msg = "소나기가 내립니다. 반등 시마다 주식 비중을 줄이고 현금을 확보하세요."
+        guide_msg = "소나기입니다. 반등 시 현금 확보."
         guide_bg = "#ffebee"
     elif final_score >= 50:
-        level_text = "위험도 [높음] - 하락장 진입"
-        guide_msg = "보수적 대응이 필요합니다. 물타기는 금물이며, 확실한 종목만 남기세요."
+        level_text = "위험도 [높음] - 하락장"
+        guide_msg = "보수적 대응. 물타기 금지."
         guide_bg = "#fff3e0"
     elif final_score >= 35:
-        level_text = "위험도 [경계] - 관망 필요"
-        guide_msg = "시장이 방향을 탐색 중입니다. 신규 진입은 자제하고 리스크 관리에 집중하세요."
+        level_text = "위험도 [경계] - 관망"
+        guide_msg = "신규 진입 자제. 리스크 관리."
         guide_bg = "#fff3e0"
     elif final_score >= 20:
-        level_text = "위험도 [주의] - 변동성 확대"
-        guide_msg = "나쁘지 않지만 좋지도 않습니다. 분할 매수로 대응하며 시장을 지켜보세요."
+        level_text = "위험도 [주의] - 변동성"
+        guide_msg = "분할 매수로 대응하세요."
         guide_bg = "#fffde7"
     elif final_score >= 10:
         level_text = "위험도 [양호] - 투자 적기"
-        guide_msg = "시장이 안정적입니다. 실적주 위주로 매수하기 좋은 시점입니다."
+        guide_msg = "실적주 위주로 매수하세요."
         guide_bg = "#f1f8e9"
     else:
-        level_text = "위험도 [매우 좋음] - 적극 매수"
-        guide_msg = "골디락스(Goldilocks)입니다. 주식 비중을 최대로 늘려 수익을 극대화하세요!"
+        level_text = "위험도 [최상] - 적극 매수"
+        guide_msg = "골디락스 구간입니다. 수익 극대화!"
         guide_bg = "#e8f5e9"
 
-    # 수급/요인 HTML
+    # 수급 정보 HTML
     if investor_data:
         investor_content = f"""
         <span style="color:#d62728; font-weight:bold;">개인: {investor_data['개인']}</span> &nbsp;|&nbsp; 
@@ -417,42 +460,72 @@ else:
         <span style="color:#2ca02c; font-weight:bold;">기관: {investor_data['기관']}</span>
         """
     else:
-        investor_content = "<span style='color:#999;'>수급 정보 로딩 실패 (장 시작 전이거나 데이터를 가져올 수 없음)</span>"
+        investor_content = "<span style='color:#999;'>수급 정보 로딩 중... (장 시작 전이거나 집계 지연)</span>"
 
     if reasons:
         reason_items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in reasons])
         reason_content = f"<ul style='margin-top:5px; padding-left:20px; color:#d32f2f; font-weight:600;'>{reason_items}</ul>"
     else:
-        reason_content = "<p style='margin-top:5px; color:#2e7d32; font-weight:bold;'>✅ 특이 사항 없음 (안정적)</p>"
+        reason_content = "<p style='margin-top:5px; color:#2e7d32; font-weight:bold;'>✅ 특이 사항 없음</p>"
 
-    # 최종 가이드 박스
+    # 가이드 박스 출력
     guide_html = f"""
     <div class="guide-box" style="background-color: {guide_bg};">
         <div class="guide-header">👉 현재 상태: {level_text}</div>
         <p style="font-weight:bold; font-size:16px; margin-bottom:15px;">{guide_msg}</p>
         <div style="border-top: 1px solid rgba(0,0,0,0.1); padding-top:15px;">
-            <strong>🚨 주요 요인 (25점 만점 기준):</strong>
+            <strong>🚨 주요 위험 요인:</strong>
             {reason_content}
         </div>
         <div class="investor-box">
-            <strong style="display:block; margin-bottom:5px;">💰 코스피 수급 (잠정):</strong>
+            <strong style="display:block; margin-bottom:5px;">💰 코스피 수급 (오늘 누적):</strong>
             {investor_content}
         </div>
     </div>
     """
     st.markdown(guide_html, unsafe_allow_html=True)
     
+    # --- 5. 추가 정보 섹션 (뉴스) ---
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        st.markdown("### 🇺🇸 연준(Fed) & 글로벌 브리핑")
+        if news_data and news_data['fed']:
+            for item in news_data['fed']:
+                st.markdown(f"""
+                <div class="news-item">
+                    <span class="fed-badge">Fed/금리</span>
+                    <a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a>
+                    <div class="news-meta">{item['summary']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("연준 관련 최신 주요 뉴스가 없습니다.")
+            
+    with c2:
+        st.markdown("### 🇰🇷 국내 증시 주요 체크")
+        if news_data and news_data['korea']:
+            for item in news_data['korea']:
+                st.markdown(f"""
+                <div class="news-item">
+                    <a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("국내 주요 뉴스를 불러오지 못했습니다.")
+
     st.markdown("---")
     
     with st.expander("📜 100점 만점 기준 가이드라인 보기"):
         st.markdown("""
         | 위험 점수 | 상태 | 행동 요령 |
         |---|---|---|
-        | **85~100** | 🌪️ 붕괴 | HTS 삭제 권장. 현금 100% 확보. |
-        | **70~84** | ☔️ 폭락 | 투매 금지. 반등 시마다 매도. |
+        | **85~100** | 🌪️ 붕괴 | 현금 100% 확보. |
+        | **70~84** | ☔️ 폭락 | 투매 금지. 반등 시 매도. |
         | **50~69** | 🌧️ 하락 | 물타기 금지. 보수적 대응. |
-        | **35~49** | ☁️ 경계 | 신규 매수 자제. 현금 비중 확대. |
-        | **20~34** | ⛅️ 주의 | 변동성 구간. 분할 매수/매도. |
-        | **10~19** | 🌤️ 양호 | 실적주 위주 매수 대응. |
-        | **0~9** | ☀️ 최상 | 적극 매수. 불타기 가능 구간. |
+        | **35~49** | ☁️ 경계 | 신규 매수 자제. 현금 확대. |
+        | **20~34** | ⛅️ 주의 | 변동성 구간. 분할 매매. |
+        | **10~19** | 🌤️ 양호 | 실적주 매수 대응. |
+        | **0~9** | ☀️ 최상 | 적극 매수 구간. |
         """)
