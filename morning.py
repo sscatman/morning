@@ -3,12 +3,11 @@ import yfinance as yf
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-import plotly.graph_objects as go
 from datetime import datetime
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="시장 정밀 분석 (20단계)",
+    page_title="시장 정밀 분석 (100점 만점)",
     page_icon="📊",
     layout="wide"
 )
@@ -16,77 +15,205 @@ st.set_page_config(
 # --- 스타일링 (CSS) ---
 st.markdown("""
     <style>
+    /* 기본 폰트 색상 및 스타일 */
+    body, p, h1, h2, h3, h4, div, span, label, li {
+        color: #111 !important;
+        font-family: 'Pretendard', sans-serif;
+    }
+    
     .header-title {
         font-size: 24px !important;
         font-weight: bold;
         margin-bottom: 5px;
-        color: #111;
+        color: #000 !important;
     }
     .sub-info {
         font-size: 14px;
-        color: #555;
+        color: #555 !important;
     }
-    .big-metric {
-        font-size: 20px !important;
-        font-weight: bold;
+    
+    /* 가로 스크롤 카드 컨테이너 */
+    .scroll-container {
+        display: flex;
+        overflow-x: auto;
+        gap: 12px;
+        padding-bottom: 10px;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
     }
-    .risk-box {
+    .metric-card {
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
         padding: 15px;
-        border-radius: 8px;
-        margin-top: 10px;
+        min-width: 130px;
+        text-align: center;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        display: inline-block;
+    }
+    .metric-title { font-size: 13px; color: #666 !important; margin-bottom: 5px; }
+    .metric-value { font-size: 18px; font-weight: 800; color: #000 !important; }
+    .metric-delta { font-size: 12px; font-weight: 600; margin-top: 2px; }
+    .plus { color: #d62728 !important; }
+    .minus { color: #1f77b4 !important; }
+
+    /* --- 개선된 위험도 바 (그라데이션 + 포인트) --- */
+    .risk-wrapper {
+        position: relative;
+        width: 100%;
+        height: 90px;
+        margin-top: 40px;
         margin-bottom: 10px;
+        padding: 0 10px;
+    }
+    
+    .risk-track {
+        position: absolute;
+        top: 45px;
+        left: 0;
+        width: 100%;
+        height: 14px;
+        background-color: #eee;
+        border-radius: 7px;
+        overflow: hidden;
+    }
+    
+    .risk-fill {
+        height: 100%;
+        border-radius: 7px;
+        /* 초록 -> 노랑 -> 빨강 그라데이션 */
+        background: linear-gradient(90deg, #00e676 0%, #ffeb3b 50%, #ff3d00 100%);
+        transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .risk-pointer {
+        position: absolute;
+        top: 0;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 35px;
+        background: #fff;
+        border-radius: 20px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        text-align: center;
+        line-height: 33px;
+        font-weight: 800;
+        font-size: 14px;
+        color: #333;
+        border: 2px solid;
+        z-index: 10;
+        transition: left 1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .risk-pointer::after {
+        content: '';
+        position: absolute;
+        bottom: -6px;
+        left: 50%;
+        transform: translateX(-50%);
+        border-width: 6px 6px 0;
+        border-style: solid;
+        border-color: inherit transparent transparent transparent;
+        display: block;
+        width: 0;
+    }
+
+    .risk-scale {
+        position: absolute;
+        top: 65px;
+        left: 0;
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        color: #999 !important;
+        font-size: 11px;
         font-weight: bold;
+    }
+    .scale-mark {
+        position: relative;
+        width: 30px;
+        text-align: center;
+    }
+    .scale-mark::before {
+        content: '';
+        position: absolute;
+        top: -8px;
+        left: 50%;
+        width: 1px;
+        height: 6px;
+        background-color: #ccc;
+    }
+
+    /* 행동 가이드 박스 */
+    .guide-box {
+        padding: 20px;
+        background-color: #ffffff;
+        border-radius: 12px;
+        border: 1px solid #eee;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    }
+    .guide-header {
+        font-size: 18px;
+        font-weight: 800;
+        margin-bottom: 10px;
+        color: #222 !important;
+    }
+    .investor-box {
+        margin-top: 15px;
+        padding: 12px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #eee;
+        font-size: 13px;
     }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 상단: 새로고침 버튼 ---
-if st.button('🔄 전체 데이터 새로고침', use_container_width=True):
+if st.button('🔄 데이터 새로고침', use_container_width=True):
     st.rerun()
 
-# --- 함수: 날씨 (대전) ---
+# --- 함수: 날씨 ---
 def get_weather(city="Daejeon"):
     try:
         url = f"https://wttr.in/{city}?format=%C+%t"
-        response = requests.get(url, timeout=3)
+        response = requests.get(url, timeout=2)
         if response.status_code == 200:
             return response.text.strip()
         return "N/A"
     except:
         return "N/A"
 
-# --- 함수: 네이버 금융 크롤링 (외국인 수급) ---
-# 주의: 네이버 페이지 구조 변경 시 수정 필요
+# --- 함수: 수급 정보 (크롤링 강화) ---
 def get_kr_market_investors():
-    """
-    네이버 금융 리서치 페이지 등에서 장중 외국인 순매수 동향을 파악합니다.
-    실시간 정확도는 증권사 HTS보다 떨어질 수 있습니다.
-    """
-    url = "https://finance.naver.com/"
+    url = "https://finance.naver.com/sise/sise_trans_style.naver"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Referer': 'https://finance.naver.com/'
+    }
     try:
-        response = requests.get(url, timeout=5)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        response = requests.get(url, headers=headers, timeout=10)
+        html = response.content.decode('euc-kr', 'replace')
+        soup = BeautifulSoup(html, 'html.parser')
         
-        # 네이버 금융 홈 상단 데이터 (구조가 복잡하여 예외처리 필수)
-        # 여기서는 간단히 크롤링이 어렵다면 모의 로직을 사용하거나
-        # 실제로는 API가 없으므로 화면에 '정보 확인 필요'로 띄울 수도 있습니다.
-        # *이 코드는 데모용으로 크롤링 시도 후 실패 시 None 반환*
-        
-        # (실제 크롤링 로직은 페이지 구조에 의존적이므로 
-        # 안정성을 위해 여기서는 yfinance의 전일 대비 등락률을 기반으로 
-        # 외국인 수급을 '추정'하는 방식으로 대체하거나
-        # 투자자별 매매동향 페이지를 파싱해야 합니다.)
-        
-        # 여기서는 보다 안정적인 yfinance 데이터를 메인으로 쓰되,
-        # 외국인 수급은 '알 수 없음(HTS 확인 요망)'으로 두지 않고
-        # 코스피 지수가 1% 이상 하락하면 '매도세 추정'으로 로직을 짭니다.
-        
-        # *강력한 크롤링 대신 지수 기반 추정 로직 사용 (웹페이지 차단 방지)*
-        return None 
-    except:
+        table = soup.find('table', class_='type2')
+        if not table: return None
+
+        rows = table.find_all('tr')
+        for row in rows:
+            cols = row.find_all('td')
+            if len(cols) > 8: 
+                personal = cols[1].text.strip()
+                foreigner = cols[2].text.strip()
+                institution = cols[3].text.strip()
+                if personal and foreigner and institution:
+                    return {"개인": personal, "외국인": foreigner, "기관": institution}
+        return None
+    except Exception:
         return None
 
-# --- 함수: 글로벌/한국 데이터 가져오기 ---
+# --- 함수: 데이터 가져오기 ---
 def get_all_data():
     tickers = {
         "tnx": "^TNX",   # 미국 10년물 국채
@@ -95,15 +222,12 @@ def get_all_data():
         "kospi": "^KS11", # 코스피
         "kosdaq": "^KQ11" # 코스닥
     }
-    
     data = {}
     try:
         for key, symbol in tickers.items():
             df = yf.download(symbol, period="5d", progress=False)
             if len(df) < 2:
-                # 데이터 부족 시 처리
-                if len(df) == 1:
-                    df = pd.concat([df, df])
+                if len(df) == 1: df = pd.concat([df, df])
             data[key] = df
         return data, None
     except Exception as e:
@@ -113,17 +237,19 @@ def get_all_data():
 weather = get_weather("Daejeon")
 now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
 
-st.markdown(f'<div class="header-title">📊 사장님의 마켓 레이더 (20단계 정밀분석)</div>', unsafe_allow_html=True)
-st.markdown(f'<div class="sub-info">📍 대전: {weather} | 🕒 {now_str} 기준</div>', unsafe_allow_html=True)
-st.markdown("---")
+st.markdown(f"""
+<div class="header-title">📊 사장님의 마켓 레이더 (100점 만점)</div>
+<div class="sub-info">📍 대전: {weather} | 🕒 {now_str} 기준</div>
+<hr>
+""", unsafe_allow_html=True)
 
 # --- 데이터 로딩 ---
 raw_data, error = get_all_data()
+investor_data = get_kr_market_investors()
 
 if error:
     st.error(f"데이터 로딩 실패: {error}")
 else:
-    # 데이터 전처리 함수
     def get_info(df):
         if df is None or df.empty: return 0, 0, 0
         curr = df['Close'].iloc[-1]
@@ -134,169 +260,199 @@ else:
         pct = (diff / prev) * 100
         return curr, diff, pct
 
-    # 각 지표 추출
     tnx_val, tnx_diff, tnx_pct = get_info(raw_data['tnx'])
     oil_val, oil_diff, oil_pct = get_info(raw_data['oil'])
     krw_val, krw_diff, krw_pct = get_info(raw_data['krw'])
     kospi_val, kospi_diff, kospi_pct = get_info(raw_data['kospi'])
     kosdaq_val, kosdaq_diff, kosdaq_pct = get_info(raw_data['kosdaq'])
 
-    # --- 5열 레이아웃 (지표 보여주기) ---
-    c1, c2, c3, c4, c5 = st.columns(5)
-    
-    with c1:
-        st.metric("🇺🇸 국채(10y)", f"{tnx_val:.3f}%", f"{tnx_diff:.3f}")
-    with c2:
-        st.metric("🛢️ 유가(WTI)", f"${oil_val:.2f}", f"{oil_diff:.2f}")
-    with c3:
-        st.metric("🇰🇷 환율", f"{krw_val:.0f}원", f"{krw_diff:.1f}")
-    with c4:
-        st.metric("📉 코스피", f"{kospi_val:.0f}", f"{kospi_pct:.2f}%")
-    with c5:
-        st.metric("📉 코스닥", f"{kosdaq_val:.0f}", f"{kosdaq_pct:.2f}%")
+    # HTML 한 줄 처리
+    def make_card(title, value, diff, is_percent=False):
+        color_class = "plus" if diff >= 0 else "minus"
+        sign = "+" if diff >= 0 else ""
+        fmt_val = f"{value:.2f}%" if is_percent else f"{value:.2f}"
+        if title == "🇰🇷 환율": fmt_val = f"{value:.0f}원"
+        elif title == "🛢️ 유가": fmt_val = f"${value:.2f}"
+        
+        return f'<div class="metric-card"><div class="metric-title">{title}</div><div class="metric-value">{fmt_val}</div><div class="metric-delta {color_class}">{sign}{diff:.2f}</div></div>'
 
+    cards_html = f"""
+    <div class="scroll-container">
+        {make_card("🇺🇸 미국채 10년", tnx_val, tnx_diff, True)}
+        {make_card("🛢️ 유가", oil_val, oil_diff)}
+        {make_card("🇰🇷 환율", krw_val, krw_diff)}
+        {make_card("📉 코스피", kospi_val, kospi_pct, True)}
+        {make_card("📉 코스닥", kosdaq_val, kosdaq_pct, True)}
+    </div>
+    """
+    st.markdown(cards_html, unsafe_allow_html=True)
+    st.caption("↔️ 좌우로 스크롤하여 모든 지표를 확인하세요.")
     st.markdown("---")
 
-    # --- [핵심] 20단계 위험도 계산 로직 ---
-    # 총점 0(천국) ~ 20(지옥)
-    risk_score = 0
+    # --- [핵심 수정] 100점 만점 정밀 계산 로직 ---
+    # 각 지표별 25점 만점 x 4개 항목 = 100점
+    # 선형 매핑(Linear Mapping) 함수 사용
+    
+    def map_score(value, min_val, max_val, max_score=25):
+        """값을 범위 내에서 점수로 환산 (0 ~ max_score)"""
+        if value <= min_val: return 0
+        if value >= max_val: return max_score
+        # 선형 보간
+        score = (value - min_val) / (max_val - min_val) * max_score
+        return score
+
+    total_risk_score = 0
     reasons = []
 
-    # 1. 국채 금리 (최대 4점)
-    if tnx_val >= 4.6: risk_score += 4; reasons.append("국채금리 4.6% 돌파 (매우 심각)")
-    elif tnx_val >= 4.4: risk_score += 3; reasons.append("국채금리 4.4% 상회")
-    elif tnx_val >= 4.2: risk_score += 2; reasons.append("국채금리 4.2% 상회 (주의)")
-    elif tnx_val >= 4.0: risk_score += 1
-
-    # 2. 유가 (최대 4점)
-    if oil_val >= 90: risk_score += 4; reasons.append("유가 $90 돌파 (오일쇼크 우려)")
-    elif oil_val >= 85: risk_score += 3; reasons.append("유가 $85 상회 (인플레)")
-    elif oil_val >= 80: risk_score += 2; reasons.append("유가 $80 상회")
-    elif oil_val >= 75: risk_score += 1
-
-    # 3. 환율 (최대 4점)
-    if krw_val >= 1450: risk_score += 4; reasons.append("환율 1,450원 돌파 (외환위기급)")
-    elif krw_val >= 1400: risk_score += 3; reasons.append("환율 1,400원 상회 (외인 이탈)")
-    elif krw_val >= 1350: risk_score += 2; reasons.append("환율 1,350원 상회")
-    elif krw_val >= 1320: risk_score += 1
-
-    # 4. 국내 증시 수급 및 추세 (코스피/코스닥 + 외인 추정) (최대 8점)
-    # yfinance로는 실시간 외인 수급이 없으므로, 지수 등락폭을 통해 간접 평가
-    # (일반적으로 코스피가 1% 이상 빠지면 외인 매도세가 강한 날로 간주)
+    # 1. 국채 금리 (25점 만점)
+    # 범위: 3.80%(0점) ~ 4.50%(25점)
+    tnx_score = map_score(tnx_val, 3.80, 4.50, 25)
+    total_risk_score += tnx_score
     
-    market_badness = 0
+    if tnx_score >= 10: # 중간 이상 위험 시 경고
+        reasons.append(f"국채금리 {tnx_val:.2f}% (위험도 {int(tnx_score)}/25)")
+
+    # 2. 유가 (25점 만점)
+    # 범위: $75(0점) ~ $90(25점)
+    oil_score = map_score(oil_val, 75.0, 90.0, 25)
+    total_risk_score += oil_score
     
-    # 코스피 상태
-    if kospi_pct < -2.0: market_badness += 4; reasons.append("코스피 -2% 이상 폭락 (패닉)")
-    elif kospi_pct < -1.0: market_badness += 2; reasons.append("코스피 -1% 이상 하락 (약세)")
-    elif kospi_pct < -0.5: market_badness += 1
+    if oil_score >= 10:
+        reasons.append(f"유가 ${oil_val:.2f} (위험도 {int(oil_score)}/25)")
+
+    # 3. 환율 (25점 만점)
+    # 범위: 1350원(0점) ~ 1450원(25점) - 현실화된 기준
+    krw_score = map_score(krw_val, 1350, 1450, 25)
+    total_risk_score += krw_score
     
-    # 코스닥 상태
-    if kosdaq_pct < -2.5: market_badness += 4; reasons.append("코스닥 -2.5% 이상 폭락 (붕괴)")
-    elif kosdaq_pct < -1.5: market_badness += 2; reasons.append("코스닥 -1.5% 이상 급락")
-    elif kosdaq_pct < -0.8: market_badness += 1
+    if krw_score >= 10:
+        reasons.append(f"환율 {krw_val:.0f}원 (위험도 {int(krw_score)}/25)")
 
-    # 합산 (최대 8점으로 제한)
-    total_market_score = min(market_badness, 8)
-    risk_score += total_market_score
-
-    # 점수 보정 (0~20 범위)
-    risk_score = min(max(risk_score, 0), 20)
-
-    # --- UI: 게이지 차트 (0 ~ 20) ---
-    st.subheader(f"📊 현재 시장 위험도: {risk_score} / 20")
+    # 4. 국내 증시 급락 (25점 만점)
+    # 범위: -0.5%(0점) ~ -2.5%(25점)
+    market_drop = min(kospi_pct, kosdaq_pct) # 하락폭이 큰 것 기준 (음수)
+    # 하락폭을 양수로 변환하여 계산 (-2.5%가 더 큰 위험)
+    drop_magnitude = -market_drop
+    market_score = map_score(drop_magnitude, 0.5, 2.5, 25)
+    total_risk_score += market_score
     
-    # 게이지 색상 구간 설정
-    steps = [
-        {'range': [0, 5], 'color': "#00C853"},   # 좋음 (초록)
-        {'range': [5, 10], 'color': "#FFD600"},  # 주의 (노랑)
-        {'range': [10, 15], 'color': "#FF6D00"}, # 위험 (주황)
-        {'range': [15, 20], 'color': "#D50000"}  # 폭락 (빨강)
-    ]
+    if market_score >= 10:
+        reasons.append(f"증시 변동성 {market_drop:.2f}% (위험도 {int(market_score)}/25)")
 
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = risk_score,
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        gauge = {
-            'axis': {'range': [0, 20], 'tickwidth': 1},
-            'bar': {'color': "black"},
-            'steps': steps,
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': risk_score
-            }
-        }
-    ))
-    fig.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
-    st.plotly_chart(fig, use_container_width=True)
+    # 총점 (0~100)
+    final_score = int(total_risk_score)
+    # UI 표시용 퍼센트 (최소 2% 보장)
+    display_percent = max(min(final_score, 100), 2)
 
-    # --- 행동 가이드 (20단계 세분화) ---
+    # --- UI 렌더링 ---
+    st.subheader(f"📊 시장 위험도: {final_score}점")
     
-    # 원인 박스
-    if reasons:
-        st.warning("**🚨 주요 위험 요인:**\n" + "\n".join([f"- {r}" for r in reasons]))
-    else:
-        st.success("**✅ 특이 사항 없음:** 모든 지표가 평온합니다.")
+    # 색상 결정
+    if final_score >= 80: pointer_color = "#ff3d00" # 빨강 (심각)
+    elif final_score >= 60: pointer_color = "#ff9100" # 주황 (위험)
+    elif final_score >= 40: pointer_color = "#ffc400" # 노랑 (주의)
+    elif final_score >= 20: pointer_color = "#00e676" # 연두 (보통)
+    else: pointer_color = "#2979ff" # 파랑 (좋음)
 
-    st.markdown("### 💡 행동 가이드 (Level 1 ~ 20)")
-
-    # 20단계 텍스트 생성
-    # 로직: 점수(0~20)에 따라 메시지 결정
-    
-    guide_msg = ""
-    guide_color = ""
-    
-    if risk_score >= 18:
-        level_title = "Lv.18~20 [시장 붕괴 - 탈출 불가]"
-        guide_msg = "이미 늦었을 수 있습니다. 투매가 투매를 부르는 공황 상태입니다. 지금 던지면 최저점일 수 있으니, 차라리 HTS를 끄고 며칠간 보지 마십시오. 신규 진입은 자살행위입니다."
-        guide_color = "#FFCDD2" # 옅은 빨강 배경
-    elif risk_score >= 15:
-        level_title = "Lv.15~17 [폭락장 - 현금 생명]"
-        guide_msg = "소나기가 아니라 태풍입니다. 코스피/코스닥이 무너지고 있습니다. 반등 시마다 물량을 줄이고 현금을 80% 이상 확보하세요."
-        guide_color = "#FFCDD2"
-    elif risk_score >= 12:
-        level_title = "Lv.12~14 [대세 하락 - 보수적]"
-        guide_msg = "외국인이 한국 시장을 떠나고 있습니다. 환율과 금리가 부담스럽습니다. 단타 실력이 없다면 쉬는 것이 돈 버는 것입니다."
-        guide_color = "#FFE0B2" # 옅은 주황
-    elif risk_score >= 9:
-        level_title = "Lv.9~11 [경계 - 박스권 하단]"
-        guide_msg = "분위기가 험악합니다. 적극적인 매수는 자제하고, 확실한 주도주(실적주) 외에는 정리가 필요합니다. 현금 50% 유지."
-        guide_color = "#FFE0B2"
-    elif risk_score >= 6:
-        level_title = "Lv.6~8 [주의 - 변동성 확대]"
-        guide_msg = "지수가 방향을 탐색 중입니다. 금리나 유가 중 하나가 거슬립니다. 몰빵 금지, 분할 매수만 유효합니다."
-        guide_color = "#FFF9C4" # 옅은 노랑
-    elif risk_score >= 3:
-        level_title = "Lv.3~5 [보통 - 맑음]"
-        guide_msg = "큰 악재는 없습니다. 개별 종목 장세입니다. 외국인 수급이 들어오는 섹터 위주로 담아보세요."
-        guide_color = "#F0F4C3" # 옅은 연두
-    else:
-        level_title = "Lv.0~2 [최상 - 강력 매수]"
-        guide_msg = "골디락스(Goldilocks)입니다. 금리, 유가, 환율 모두 안정적입니다. 주식 비중 100%로 수익을 극대화하세요!"
-        guide_color = "#C8E6C9" # 옅은 초록
-
-    # 현재 단계 표시
-    st.markdown(f"""
-    <div style="background-color: {guide_color}; padding: 20px; border-radius: 10px; border: 1px solid #ddd;">
-        <h3 style="margin:0; color:#333;">👉 현재 상태: {level_title}</h3>
-        <p style="margin-top:10px; font-size:16px; font-weight:bold;">{guide_msg}</p>
+    risk_bar_html = f"""
+    <div class="risk-wrapper">
+        <div class="risk-pointer" style="left: {display_percent}%; border-color: {pointer_color}; color: {pointer_color};">
+            {final_score}
+        </div>
+        <div class="risk-track">
+            <div class="risk-fill" style="width: {display_percent}%;"></div>
+        </div>
+        <div class="risk-scale">
+            <span class="scale-mark">0</span>
+            <span class="scale-mark">20</span>
+            <span class="scale-mark">40</span>
+            <span class="scale-mark">60</span>
+            <span class="scale-mark">80</span>
+            <span class="scale-mark">100</span>
+        </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(risk_bar_html, unsafe_allow_html=True)
+
+    # 행동 가이드 내용
+    guide_msg = ""
+    guide_bg = ""
+    level_text = ""
+
+    # 점수대별 가이드 (100점 기준)
+    if final_score >= 85:
+        level_text = "위험도 [최고조] - 시장 붕괴"
+        guide_msg = "공황 상태입니다. 모든 매매를 중단하고 HTS를 끄십시오. 현금이 왕입니다."
+        guide_bg = "#ffebee"
+    elif final_score >= 70:
+        level_text = "위험도 [매우 높음] - 폭락 경보"
+        guide_msg = "소나기가 내립니다. 반등 시마다 주식 비중을 줄이고 현금을 확보하세요."
+        guide_bg = "#ffebee"
+    elif final_score >= 50:
+        level_text = "위험도 [높음] - 하락장 진입"
+        guide_msg = "보수적 대응이 필요합니다. 물타기는 금물이며, 확실한 종목만 남기세요."
+        guide_bg = "#fff3e0"
+    elif final_score >= 35:
+        level_text = "위험도 [경계] - 관망 필요"
+        guide_msg = "시장이 방향을 탐색 중입니다. 신규 진입은 자제하고 리스크 관리에 집중하세요."
+        guide_bg = "#fff3e0"
+    elif final_score >= 20:
+        level_text = "위험도 [주의] - 변동성 확대"
+        guide_msg = "나쁘지 않지만 좋지도 않습니다. 분할 매수로 대응하며 시장을 지켜보세요."
+        guide_bg = "#fffde7"
+    elif final_score >= 10:
+        level_text = "위험도 [양호] - 투자 적기"
+        guide_msg = "시장이 안정적입니다. 실적주 위주로 매수하기 좋은 시점입니다."
+        guide_bg = "#f1f8e9"
+    else:
+        level_text = "위험도 [매우 좋음] - 적극 매수"
+        guide_msg = "골디락스(Goldilocks)입니다. 주식 비중을 최대로 늘려 수익을 극대화하세요!"
+        guide_bg = "#e8f5e9"
+
+    # 수급/요인 HTML
+    if investor_data:
+        investor_content = f"""
+        <span style="color:#d62728; font-weight:bold;">개인: {investor_data['개인']}</span> &nbsp;|&nbsp; 
+        <span style="color:#1f77b4; font-weight:bold;">외국인: {investor_data['외국인']}</span> &nbsp;|&nbsp; 
+        <span style="color:#2ca02c; font-weight:bold;">기관: {investor_data['기관']}</span>
+        """
+    else:
+        investor_content = "<span style='color:#999;'>수급 정보 로딩 실패 (장 시작 전이거나 데이터를 가져올 수 없음)</span>"
+
+    if reasons:
+        reason_items = "".join([f"<li style='margin-bottom:4px;'>{r}</li>" for r in reasons])
+        reason_content = f"<ul style='margin-top:5px; padding-left:20px; color:#d32f2f; font-weight:600;'>{reason_items}</ul>"
+    else:
+        reason_content = "<p style='margin-top:5px; color:#2e7d32; font-weight:bold;'>✅ 특이 사항 없음 (안정적)</p>"
+
+    # 최종 가이드 박스
+    guide_html = f"""
+    <div class="guide-box" style="background-color: {guide_bg};">
+        <div class="guide-header">👉 현재 상태: {level_text}</div>
+        <p style="font-weight:bold; font-size:16px; margin-bottom:15px;">{guide_msg}</p>
+        <div style="border-top: 1px solid rgba(0,0,0,0.1); padding-top:15px;">
+            <strong>🚨 주요 요인 (25점 만점 기준):</strong>
+            {reason_content}
+        </div>
+        <div class="investor-box">
+            <strong style="display:block; margin-bottom:5px;">💰 코스피 수급 (잠정):</strong>
+            {investor_content}
+        </div>
+    </div>
+    """
+    st.markdown(guide_html, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # 20단계 전체 표 (접기 기능)
-    with st.expander("📜 전체 20단계 가이드라인 보기"):
+    with st.expander("📜 100점 만점 기준 가이드라인 보기"):
         st.markdown("""
-        | 위험도(Lv) | 상태 | 행동 요령 |
+        | 위험 점수 | 상태 | 행동 요령 |
         |---|---|---|
-        | **18~20** | 🌪️ 붕괴 | 모든 자산 매도 후 관망. HTS 삭제 권장. |
-        | **15~17** | ☔️ 폭락 | 투매 동참 금지, 반등시 현금화 주력. |
-        | **12~14** | 🌧️ 하락 | 보수적 대응. 현금 비중 50~70% 유지. |
-        | **09~11** | ☁️ 흐림 | 신규 매수 자제. 리스크 관리 집중. |
-        | **06~08** | ⛅️ 주의 | 변동성 확대. 분할 매수/매도 대응. |
-        | **03~05** | 🌤️ 양호 | 개별주 장세. 실적주 위주 접근. |
-        | **00~02** | ☀️ 최상 | 적극 매수. 불타기 가능 구간. |
+        | **85~100** | 🌪️ 붕괴 | HTS 삭제 권장. 현금 100% 확보. |
+        | **70~84** | ☔️ 폭락 | 투매 금지. 반등 시마다 매도. |
+        | **50~69** | 🌧️ 하락 | 물타기 금지. 보수적 대응. |
+        | **35~49** | ☁️ 경계 | 신규 매수 자제. 현금 비중 확대. |
+        | **20~34** | ⛅️ 주의 | 변동성 구간. 분할 매수/매도. |
+        | **10~19** | 🌤️ 양호 | 실적주 위주 매수 대응. |
+        | **0~9** | ☀️ 최상 | 적극 매수. 불타기 가능 구간. |
         """)
