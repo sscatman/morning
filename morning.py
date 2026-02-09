@@ -9,7 +9,7 @@ import time
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.3)",
+    page_title="위험도 분석 (V0.31)",
     page_icon="📊",
     layout="wide"
 )
@@ -48,7 +48,7 @@ st.markdown("""
         margin-bottom: 5px;
         display: flex;
         justify-content: space-between;
-        align-items: center; /* 수직 중앙 정렬 */
+        align-items: center;
     }
     .mini-gauge-track {
         position: relative;
@@ -362,7 +362,7 @@ kst_now = datetime.utcnow() + timedelta(hours=9)
 now_str = kst_now.strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 위험도 분석 (V0.3)</div>
+<div class="header-title">📊 위험도 분석 (V0.31)</div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} (KST)</div>
 <hr>
 """, unsafe_allow_html=True)
@@ -423,32 +423,7 @@ else:
         </div>
         """
 
-    # --- 1. 상단 요약 카드 (순서 재배치) ---
-    # 순서: 국채 -> 유가 -> 환율 -> 나스닥 -> SNP500 -> 반도체 -> 코스피 -> 코스닥
-    def make_card(title, value, diff, is_percent=False):
-        color_class = "plus" if diff >= 0 else "minus"
-        sign = "+" if diff >= 0 else ""
-        fmt_val = f"{value:.2f}%" if is_percent else f"{value:.2f}"
-        if "환율" in title: fmt_val = f"{value:.0f}원"
-        elif "유가" in title: fmt_val = f"${value:.2f}"
-        return f'<div class="metric-card"><div class="metric-title">{title}</div><div class="metric-value">{fmt_val}</div><div class="metric-delta {color_class}">{sign}{diff:.2f}</div></div>'
-
-    cards_html = f"""<div class="scroll-container">
-        {make_card("🇺🇸 미국채 10년", tnx_val, tnx_diff, True)}
-        {make_card("🛢️ WTI 유가", oil_val, oil_diff)}
-        {make_card("🇰🇷 환율", krw_val, krw_diff)}
-        {make_card("🇺🇸 나스닥", nas_val, nas_diff)}
-        {make_card("🇺🇸 S&P 500", sp5_val, sp5_diff)}
-        {make_card("💾 반도체(SOX)", sox_val, sox_pct, True)}
-        {make_card("🇰🇷 코스피", kospi_val, kospi_pct, True)}
-        {make_card("🇰🇷 코스닥", kosdaq_val, kosdaq_pct, True)}
-    </div>"""
-    st.markdown(cards_html, unsafe_allow_html=True)
-    
-    st.caption("↔️ 좌우로 스크롤하여 모든 지표를 확인하세요.")
-    st.markdown("---")
-
-    # --- 2. 개별 지표 게이지 바 (3열 배치 / 요청 순서 반영) ---
+    # --- 1. 개별 지표 게이지 바 (3열 배치 / 요청 순서 반영) ---
     st.subheader("📋 주요 지표 상세 현황")
     
     # 1행: 국채, 유가, 환율 (매크로)
