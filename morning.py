@@ -9,7 +9,7 @@ import time
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.31)",
+    page_title="위험도 분석 (V0.32)",
     page_icon="📊",
     layout="wide"
 )
@@ -75,6 +75,11 @@ st.markdown("""
         font-size: 11px;
         color: #888;
         margin-top: 3px;
+    }
+    /* 링크 호버 효과 */
+    a.gauge-link:hover {
+        color: #2979ff !important;
+        text-decoration: underline !important;
     }
 
     /* 4. 메인 위험도 바 스타일 */
@@ -357,12 +362,12 @@ def get_all_data():
 
 # --- 메인 헤더 ---
 weather = get_weather("Daejeon")
-# [수정] 한국 시간(KST) 적용: UTC + 9시간
+# 한국 시간(KST) 적용: UTC + 9시간
 kst_now = datetime.utcnow() + timedelta(hours=9)
 now_str = kst_now.strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 위험도 분석 (V0.31)</div>
+<div class="header-title">📊 위험도 분석 (V0.32)</div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} (KST)</div>
 <hr>
 """, unsafe_allow_html=True)
@@ -395,8 +400,8 @@ else:
     kospi_val, kospi_diff, kospi_pct = get_info(raw_data['kospi'])
     kosdaq_val, kosdaq_diff, kosdaq_pct = get_info(raw_data['kosdaq'])
 
-    # --- [신규] 개별 지표 게이지 바 생성 함수 ---
-    def draw_mini_gauge(title, value, display_text, min_val, max_val, color_mode='risk'):
+    # --- [수정] 개별 지표 게이지 바 생성 함수 (URL 링크 추가) ---
+    def draw_mini_gauge(title, value, display_text, min_val, max_val, color_mode='risk', url=None):
         # color_mode: 'risk' (Low=Good, High=Bad), 'stock' (Low=Bad, High=Good)
         
         pct = (value - min_val) / (max_val - min_val) * 100
@@ -407,10 +412,16 @@ else:
         else: # 주식: 왼쪽(파랑/하락) -> 중앙(회색) -> 오른쪽(빨강/상승)
             bg_gradient = "linear-gradient(90deg, #2196F3 0%, #EEEEEE 50%, #F44336 100%)"
             
+        # 제목 HTML 처리 (링크 적용)
+        if url:
+            title_html = f'<a href="{url}" target="_blank" class="gauge-link" style="text-decoration:none; color:#333; cursor:pointer;" title="차트 보기">{title} <span style="font-size:0.8em;">🔗</span></a>'
+        else:
+            title_html = title
+            
         return f"""
         <div class="mini-gauge-container">
             <div class="mini-gauge-title">
-                <span>{title}</span>
+                <span>{title_html}</span>
                 <span>{display_text}</span>
             </div>
             <div class="mini-gauge-track" style="background: {bg_gradient};">
@@ -426,30 +437,42 @@ else:
     # --- 1. 개별 지표 게이지 바 (3열 배치 / 요청 순서 반영) ---
     st.subheader("📋 주요 지표 상세 현황")
     
+    # URL 딕셔너리 생성
+    chart_urls = {
+        "tnx": "https://finance.yahoo.com/quote/%5ETNX",
+        "oil": "https://finance.yahoo.com/quote/CL=F",
+        "krw": "https://finance.yahoo.com/quote/KRW=X",
+        "nas": "https://finance.yahoo.com/quote/%5EIXIC",
+        "sp5": "https://finance.yahoo.com/quote/%5EGSPC",
+        "sox": "https://finance.yahoo.com/quote/%5ESOX",
+        "kospi": "https://finance.yahoo.com/quote/%5EKS11",
+        "kosdaq": "https://finance.yahoo.com/quote/%5EKQ11"
+    }
+    
     # 1행: 국채, 유가, 환율 (매크로)
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown(draw_mini_gauge("🇺🇸 국채 10년 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", tnx_val, f"{tnx_val:.2f}%", 3.0, 5.5, 'risk'), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇺🇸 국채 10년 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", tnx_val, f"{tnx_val:.2f}%", 3.0, 5.5, 'risk', url=chart_urls['tnx']), unsafe_allow_html=True)
     with c2:
-        st.markdown(draw_mini_gauge("🛢️ WTI 유가 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", oil_val, f"${oil_val:.2f}", 60.0, 100.0, 'risk'), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🛢️ WTI 유가 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", oil_val, f"${oil_val:.2f}", 60.0, 100.0, 'risk', url=chart_urls['oil']), unsafe_allow_html=True)
     with c3:
-        st.markdown(draw_mini_gauge("🇰🇷 환율 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", krw_val, f"{krw_val:.0f}원", 1300, 1600, 'risk'), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇰🇷 환율 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", krw_val, f"{krw_val:.0f}원", 1300, 1600, 'risk', url=chart_urls['krw']), unsafe_allow_html=True)
 
     # 2행: 나스닥, S&P500, 반도체 (미국)
     c4, c5, c6 = st.columns(3)
     with c4:
-        st.markdown(draw_mini_gauge("🇺🇸 나스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", nas_pct, f"{nas_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇺🇸 나스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", nas_pct, f"{nas_pct:+.2f}%", -3.0, 3.0, 'stock', url=chart_urls['nas']), unsafe_allow_html=True)
     with c5:
-        st.markdown(draw_mini_gauge("🇺🇸 S&P 500 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sp5_pct, f"{sp5_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇺🇸 S&P 500 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sp5_pct, f"{sp5_pct:+.2f}%", -3.0, 3.0, 'stock', url=chart_urls['sp5']), unsafe_allow_html=True)
     with c6:
-        st.markdown(draw_mini_gauge("💾 반도체(SOX) <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sox_pct, f"{sox_pct:+.2f}%", -5.0, 5.0, 'stock'), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("💾 반도체(SOX) <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sox_pct, f"{sox_pct:+.2f}%", -5.0, 5.0, 'stock', url=chart_urls['sox']), unsafe_allow_html=True)
 
     # 3행: 코스피, 코스닥 (한국)
     c7, c8, c9 = st.columns(3)
     with c7:
-        st.markdown(draw_mini_gauge("🇰🇷 코스피 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kospi_pct, f"{kospi_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇰🇷 코스피 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kospi_pct, f"{kospi_pct:+.2f}%", -3.0, 3.0, 'stock', url=chart_urls['kospi']), unsafe_allow_html=True)
     with c8:
-        st.markdown(draw_mini_gauge("🇰🇷 코스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kosdaq_pct, f"{kosdaq_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇰🇷 코스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kosdaq_pct, f"{kosdaq_pct:+.2f}%", -3.0, 3.0, 'stock', url=chart_urls['kosdaq']), unsafe_allow_html=True)
     with c9:
         st.empty() # 빈칸
 
