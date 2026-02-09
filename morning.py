@@ -9,7 +9,7 @@ import time
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.33)",
+    page_title="위험도 분석 (V0.35)",
     page_icon="📊",
     layout="wide"
 )
@@ -367,7 +367,7 @@ kst_now = datetime.utcnow() + timedelta(hours=9)
 now_str = kst_now.strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 위험도 분석 (V0.33)</div>
+<div class="header-title">📊 위험도 분석 (V0.35)</div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} (KST)</div>
 <hr>
 """, unsafe_allow_html=True)
@@ -452,27 +452,30 @@ else:
     # 1행: 국채, 유가, 환율 (매크로)
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown(draw_mini_gauge("🇺🇸 국채 10년 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", tnx_val, f"{tnx_val:.2f}%", 3.0, 5.5, 'risk', url=chart_urls['tnx']), unsafe_allow_html=True)
+        # 국채 표시 형식 변경: 값 (변동폭)
+        st.markdown(draw_mini_gauge("🇺🇸 국채 10년 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", tnx_val, f"{tnx_val:.2f}% ({tnx_diff:+.2f})", 3.0, 5.5, 'risk', url=chart_urls['tnx']), unsafe_allow_html=True)
     with c2:
-        st.markdown(draw_mini_gauge("🛢️ WTI 유가 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", oil_val, f"${oil_val:.2f}", 60.0, 100.0, 'risk', url=chart_urls['oil']), unsafe_allow_html=True)
+        # 유가 표시 형식 변경: 값 (변동폭)
+        st.markdown(draw_mini_gauge("🛢️ WTI 유가 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", oil_val, f"${oil_val:.2f} ({oil_diff:+.2f})", 60.0, 100.0, 'risk', url=chart_urls['oil']), unsafe_allow_html=True)
     with c3:
-        st.markdown(draw_mini_gauge("🇰🇷 환율 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", krw_val, f"{krw_val:.0f}원", 1300, 1600, 'risk', url=chart_urls['krw']), unsafe_allow_html=True)
+        # 환율 표시 형식 변경: 값 (변동폭)
+        st.markdown(draw_mini_gauge("🇰🇷 환율 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", krw_val, f"{krw_val:.0f}원 ({krw_diff:+.0f})", 1300, 1600, 'risk', url=chart_urls['krw']), unsafe_allow_html=True)
 
     # 2행: 나스닥, S&P500, 반도체 (미국) - 범위 -10 ~ 10으로 확장
     c4, c5, c6 = st.columns(3)
     with c4:
-        st.markdown(draw_mini_gauge("🇺🇸 나스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", nas_pct, f"{nas_pct:+.2f}%", -10.0, 10.0, 'stock', url=chart_urls['nas']), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇺🇸 나스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", nas_pct, f"{nas_val:.2f} ({nas_pct:+.2f}%)", -10.0, 10.0, 'stock', url=chart_urls['nas']), unsafe_allow_html=True)
     with c5:
-        st.markdown(draw_mini_gauge("🇺🇸 S&P 500 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sp5_pct, f"{sp5_pct:+.2f}%", -10.0, 10.0, 'stock', url=chart_urls['sp5']), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇺🇸 S&P 500 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sp5_pct, f"{sp5_val:.2f} ({sp5_pct:+.2f}%)", -10.0, 10.0, 'stock', url=chart_urls['sp5']), unsafe_allow_html=True)
     with c6:
-        st.markdown(draw_mini_gauge("💾 반도체(SOX) <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sox_pct, f"{sox_pct:+.2f}%", -10.0, 10.0, 'stock', url=chart_urls['sox']), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("💾 반도체(SOX) <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sox_pct, f"{sox_val:.2f} ({sox_pct:+.2f}%)", -10.0, 10.0, 'stock', url=chart_urls['sox']), unsafe_allow_html=True)
 
     # 3행: 코스피, 코스닥 (한국) - 범위 -10 ~ 10으로 확장
     c7, c8, c9 = st.columns(3)
     with c7:
-        st.markdown(draw_mini_gauge("🇰🇷 코스피 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kospi_pct, f"{kospi_pct:+.2f}%", -10.0, 10.0, 'stock', url=chart_urls['kospi']), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇰🇷 코스피 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kospi_pct, f"{kospi_val:.2f} ({kospi_pct:+.2f}%)", -10.0, 10.0, 'stock', url=chart_urls['kospi']), unsafe_allow_html=True)
     with c8:
-        st.markdown(draw_mini_gauge("🇰🇷 코스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kosdaq_pct, f"{kosdaq_pct:+.2f}%", -10.0, 10.0, 'stock', url=chart_urls['kosdaq']), unsafe_allow_html=True)
+        st.markdown(draw_mini_gauge("🇰🇷 코스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kosdaq_pct, f"{kosdaq_val:.2f} ({kosdaq_pct:+.2f}%)", -10.0, 10.0, 'stock', url=chart_urls['kosdaq']), unsafe_allow_html=True)
     with c9:
         st.empty() # 빈칸
 
@@ -642,19 +645,6 @@ else:
             for item in news_data['korea_semi']:
                 st.markdown(f"""<div class="news-item"><a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a></div>""", unsafe_allow_html=True)
         else: st.info("국내 주요 뉴스를 불러오지 못했습니다.")
-
-    st.markdown("---")
-    with st.expander("📜 위험도 산정 기준 (종합 평균 + 단독 위험 보정)"):
-        st.markdown("""
-        **총 7개 항목의 평균 점수를 기반으로 하되, 단 하나의 항목이라도 치명적이면 경고 단계를 격상합니다.**
-        1. **국채금리:** 3.5% 이상 시 위험 증가 (5.0% 만점)
-        2. **유가:** $65 이상 시 위험 증가 ($100 만점)
-        3. **환율:** 1,350원 이상 시 위험 증가 (1,550원 만점)
-        4. **반도체(SOX):** 전일 대비 하락 시 위험 증가 (-10% 만점)
-        5. **국내증시:** -3% 이상 폭락 시 위험 급증 (-10% 만점, 가중치 0.1배)
-        6. **현물 수급:** 외국인 코스피 5천억 매도 만점
-        7. **선물 수급:** 외국인 선물 1조원 매도 만점
-        """)
 
     # --- 5분 자동 새로고침 ---
     time.sleep(300)
