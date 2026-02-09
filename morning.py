@@ -17,7 +17,7 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.52", 
+    page_title="위험도 분석 V0.53", 
     page_icon="📊",
     layout="wide"
 )
@@ -63,7 +63,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 위험도 분석 V0.52")
+    st.header("⚙️ 위험도 분석 V0.53")
     
     # API 키 입력 로직 강화
     api_key_input = MY_GEMINI_API_KEY.strip() if MY_GEMINI_API_KEY else ""
@@ -185,11 +185,13 @@ def get_basic_report(m, inv, score):
 def get_ai_portfolio_analysis(api_key, m, inv, score):
     if not api_key: return None
     
-    # 여러 모델을 순차적으로 시도 (404 에러 방지)
+    # 여러 모델을 순차적으로 시도 (404 에러 방지용 모델 리스트 확장)
     models = [
-        "gemini-1.5-flash", 
-        "gemini-2.0-flash-exp", 
-        "gemini-1.5-pro", 
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash-001",
+        "gemini-1.5-pro",
+        "gemini-1.5-pro-latest",
         "gemini-1.0-pro",
         "gemini-pro"
     ]
@@ -212,7 +214,7 @@ def get_ai_portfolio_analysis(api_key, m, inv, score):
                 if match:
                     return json.loads(match.group(0))
             else:
-                last_error = f"{model_name} Error: {res.status_code}"
+                last_error = f"{model_name}: {res.status_code}"
                 continue # 다음 모델 시도
                 
         except Exception as e:
@@ -220,12 +222,12 @@ def get_ai_portfolio_analysis(api_key, m, inv, score):
             continue
             
     # 모든 모델 실패 시 에러 리턴
-    return {"error": f"AI 분석 실패 (모든 모델 시도함). 마지막 에러: {last_error}"}
+    return {"error": f"AI 연결 실패 (모든 모델 시도함). 마지막 에러: {last_error}"}
 
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.52)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.53)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv = get_market_investors()
@@ -298,6 +300,7 @@ if data:
     
     # AI 에러 발생 여부 확인
     is_error = False
+    error_msg = ""
     if ai_report and "error" in ai_report:
         is_error = True
         error_msg = ai_report['error']
@@ -306,7 +309,7 @@ if data:
     mode_label = "🤖 AI 애널리스트" if ai_report else "⚙️ 기본 분석 엔진"
     if not ai_report: 
         ai_report = get_basic_report(data, inv, risk_score)
-        if is_error: st.error(f"AI 연결 실패 ({error_msg}). 기본 분석 모드로 전환합니다.") # 에러 메시지 표시
+        if is_error: st.error(f"AI 연결 실패 ({error_msg}). 기본 분석 모드로 전환합니다.") 
     
     st.markdown(f"""
     <div class="guide-box">
