@@ -48,6 +48,7 @@ st.markdown("""
         margin-bottom: 5px;
         display: flex;
         justify-content: space-between;
+        align-items: center; /* 수직 중앙 정렬 */
     }
     .mini-gauge-track {
         position: relative;
@@ -422,29 +423,60 @@ else:
         </div>
         """
 
-    # --- 게이지 바 출력 (3열 배치) ---
-    st.subheader("📋 주요 지표 상세 현황")
-    col1, col2, col3 = st.columns(3)
+    # --- 1. 상단 요약 카드 (순서 재배치) ---
+    # 순서: 국채 -> 유가 -> 환율 -> 나스닥 -> SNP500 -> 반도체 -> 코스피 -> 코스닥
+    def make_card(title, value, diff, is_percent=False):
+        color_class = "plus" if diff >= 0 else "minus"
+        sign = "+" if diff >= 0 else ""
+        fmt_val = f"{value:.2f}%" if is_percent else f"{value:.2f}"
+        if "환율" in title: fmt_val = f"{value:.0f}원"
+        elif "유가" in title: fmt_val = f"${value:.2f}"
+        return f'<div class="metric-card"><div class="metric-title">{title}</div><div class="metric-value">{fmt_val}</div><div class="metric-delta {color_class}">{sign}{diff:.2f}</div></div>'
+
+    cards_html = f"""<div class="scroll-container">
+        {make_card("🇺🇸 미국채 10년", tnx_val, tnx_diff, True)}
+        {make_card("🛢️ WTI 유가", oil_val, oil_diff)}
+        {make_card("🇰🇷 환율", krw_val, krw_diff)}
+        {make_card("🇺🇸 나스닥", nas_val, nas_diff)}
+        {make_card("🇺🇸 S&P 500", sp5_val, sp5_diff)}
+        {make_card("💾 반도체(SOX)", sox_val, sox_pct, True)}
+        {make_card("🇰🇷 코스피", kospi_val, kospi_pct, True)}
+        {make_card("🇰🇷 코스닥", kosdaq_val, kosdaq_pct, True)}
+    </div>"""
+    st.markdown(cards_html, unsafe_allow_html=True)
     
-    with col1:
-        # 국채 (3.0 ~ 5.5%) - 위험지표
-        st.markdown(draw_mini_gauge("🇺🇸 국채 10년", tnx_val, f"{tnx_val:.2f}%", 3.0, 5.5, 'risk'), unsafe_allow_html=True)
-        # 반도체 지수 (-5% ~ +5%) - 주식지표
-        st.markdown(draw_mini_gauge("💾 반도체(SOX)", sox_pct, f"{sox_pct:+.2f}%", -5.0, 5.0, 'stock'), unsafe_allow_html=True)
-        # 나스닥 (-3% ~ +3%) - 주식지표
-        st.markdown(draw_mini_gauge("🇺🇸 나스닥", nas_pct, f"{nas_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
-        
-    with col2:
-        # 유가 ($60 ~ $100) - 위험지표
-        st.markdown(draw_mini_gauge("🛢️ WTI 유가", oil_val, f"${oil_val:.2f}", 60.0, 100.0, 'risk'), unsafe_allow_html=True)
-        # S&P 500 (-3% ~ +3%) - 주식지표
-        st.markdown(draw_mini_gauge("🇺🇸 S&P 500", sp5_pct, f"{sp5_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
-        
-    with col3:
-        # 환율 (1300 ~ 1600원) - 위험지표
-        st.markdown(draw_mini_gauge("🇰🇷 환율(원)", krw_val, f"{krw_val:.0f}원", 1300, 1600, 'risk'), unsafe_allow_html=True)
-        # 코스피 (-3% ~ +3%) - 주식지표
-        st.markdown(draw_mini_gauge("🇰🇷 코스피", kospi_pct, f"{kospi_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
+    st.caption("↔️ 좌우로 스크롤하여 모든 지표를 확인하세요.")
+    st.markdown("---")
+
+    # --- 2. 개별 지표 게이지 바 (3열 배치 / 요청 순서 반영) ---
+    st.subheader("📋 주요 지표 상세 현황")
+    
+    # 1행: 국채, 유가, 환율 (매크로)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(draw_mini_gauge("🇺🇸 국채 10년 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", tnx_val, f"{tnx_val:.2f}%", 3.0, 5.5, 'risk'), unsafe_allow_html=True)
+    with c2:
+        st.markdown(draw_mini_gauge("🛢️ WTI 유가 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", oil_val, f"${oil_val:.2f}", 60.0, 100.0, 'risk'), unsafe_allow_html=True)
+    with c3:
+        st.markdown(draw_mini_gauge("🇰🇷 환율 <span style='font-size:0.8em; color:#666;'>(📉낮을수록 좋음)</span>", krw_val, f"{krw_val:.0f}원", 1300, 1600, 'risk'), unsafe_allow_html=True)
+
+    # 2행: 나스닥, S&P500, 반도체 (미국)
+    c4, c5, c6 = st.columns(3)
+    with c4:
+        st.markdown(draw_mini_gauge("🇺🇸 나스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", nas_pct, f"{nas_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
+    with c5:
+        st.markdown(draw_mini_gauge("🇺🇸 S&P 500 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sp5_pct, f"{sp5_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
+    with c6:
+        st.markdown(draw_mini_gauge("💾 반도체(SOX) <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", sox_pct, f"{sox_pct:+.2f}%", -5.0, 5.0, 'stock'), unsafe_allow_html=True)
+
+    # 3행: 코스피, 코스닥 (한국)
+    c7, c8, c9 = st.columns(3)
+    with c7:
+        st.markdown(draw_mini_gauge("🇰🇷 코스피 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kospi_pct, f"{kospi_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
+    with c8:
+        st.markdown(draw_mini_gauge("🇰🇷 코스닥 <span style='font-size:0.8em; color:#666;'>(📈높을수록 좋음)</span>", kosdaq_pct, f"{kosdaq_pct:+.2f}%", -3.0, 3.0, 'stock'), unsafe_allow_html=True)
+    with c9:
+        st.empty() # 빈칸
 
     st.markdown("---")
 
