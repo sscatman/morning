@@ -16,8 +16,8 @@ st.set_page_config(
 # --- 스타일링 (CSS) 수정됨 ---
 st.markdown("""
     <style>
-    /* 1. 폰트 패밀리만 전역 설정 (색상 강제 제거) */
-    * {
+    /* 1. 폰트 패밀리 설정 (아이콘 깨짐 방지: * 대신 구체적 태그 지정) */
+    html, body, p, h1, h2, h3, h4, div, span, label, li, a {
         font-family: 'Pretendard', sans-serif !important;
     }
     
