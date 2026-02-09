@@ -9,7 +9,7 @@ import time
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 (V0.36)", # 버전 업데이트
+    page_title="위험도 분석 (V0.41)", # 버전 업데이트
     page_icon="📊",
     layout="wide"
 )
@@ -361,7 +361,7 @@ kst_now = datetime.utcnow() + timedelta(hours=9)
 now_str = kst_now.strftime('%Y-%m-%d %H:%M')
 
 st.markdown(f"""
-<div class="header-title">📊 위험도 분석 (V0.36)</div>
+<div class="header-title">📊 위험도 분석 (V0.41)</div>
 <div class="sub-info">📍 대전: {weather} | 🕒 {now_str} (KST)</div>
 <hr>
 """, unsafe_allow_html=True)
