@@ -1,2 +1,7 @@
-﻿streamlit yfinance pandas lxml requests
+streamlit
+yfinance
+pandas
+lxml
+requests
+
 
