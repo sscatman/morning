@@ -17,10 +17,14 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.54", 
+    page_title="위험도 분석 V0.55", 
     page_icon="📊",
     layout="wide"
 )
+
+# --- 세션 상태 초기화 (API 키 유지용) ---
+if 'api_key' not in st.session_state:
+    st.session_state.api_key = MY_GEMINI_API_KEY
 
 # --- 스타일링 (CSS) ---
 st.markdown("""
@@ -57,25 +61,28 @@ st.markdown("""
     .news-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
     .news-title { font-weight: 600; text-decoration: none; color: #333; }
     .news-title:hover { color: #1565c0; text-decoration: underline; }
-    .fed-badge { background-color: #e3f2fd; color: #1565c0; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-right: 8px; }
+    .cal-badge { background-color: #fff3e0; color: #ef6c00; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-right: 8px; }
+    .semi-badge { background-color: #e3f2fd; color: #1565c0; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-right: 8px; }
+    
+    .cal-time { font-weight: bold; color: #ef6c00; min-width: 45px; display: inline-block; }
+    .cal-star { color: #ffca28; font-size: 12px; margin-left: 4px; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 위험도 분석 V0.54")
+    st.header("⚙️ 위험도 분석 V0.55")
     
-    # API 키 입력 로직
-    api_key_input = MY_GEMINI_API_KEY.strip() if MY_GEMINI_API_KEY else ""
-    if not api_key_input:
-        api_key_input = st.text_input("🔑 Gemini API 키 입력", type="password", placeholder="여기에 키를 입력하세요").strip()
-    else:
-        st.success("✅ API 키가 코드에 적용됨")
+    api_input = st.text_input("🔑 Gemini API 키 입력", type="password", value=st.session_state.api_key, placeholder="여기에 키를 입력하세요")
+    
+    if api_input:
+        st.session_state.api_key = api_input.strip()
+        st.success("✅ API 키 적용됨")
     
     if st.button('🔄 데이터 새로고침'):
         st.rerun()
     
-    if api_key_input:
+    if st.session_state.api_key:
         st.caption("AI 분석 모드가 활성화되었습니다.")
     else:
         st.info("ℹ️ 키가 없으면 기본 분석이 실행됩니다.")
@@ -90,11 +97,7 @@ def get_weather(city="Daejeon"):
 
 def get_market_investors():
     headers = { 'User-Agent': 'Mozilla/5.0' }
-    result = { 
-        "kospi_foreigner": 0, 
-        "futures_foreigner": 0, 
-        "raw_data": {"kospi_foreigner": "0", "futures_foreigner": "0"} 
-    }
+    result = { "kospi_foreigner": 0, "raw_data": {"kospi_foreigner": "0"} }
     
     def parse_amount(text):
         try: 
@@ -107,33 +110,91 @@ def get_market_investors():
         res_kospi = requests.get(url_kospi, headers=headers, timeout=5)
         soup_kospi = BeautifulSoup(res_kospi.content.decode('euc-kr', 'replace'), 'html.parser')
         
-        kospi_items = soup_kospi.select('.lst_kos_info dd span')
-        if len(kospi_items) >= 2:
-            val_str = kospi_items[1].text.strip()
-            result["kospi_foreigner"] = parse_amount(val_str)
-            result["raw_data"]["kospi_foreigner"] = val_str
+        investor_list = soup_kospi.select('.lst_kos_info li')
+        found = False
+        for item in investor_list:
+            title = item.select_one('dt').text.strip()
+            if "외국인" in title:
+                val_str = item.select_one('dd span').text.strip()
+                result["kospi_foreigner"] = parse_amount(val_str)
+                result["raw_data"]["kospi_foreigner"] = val_str
+                found = True
+                break
         
-    except Exception as e:
-        pass
-        
+        if not found:
+             dts = soup_kospi.select('.lst_kos_info dt')
+             dds = soup_kospi.select('.lst_kos_info dd')
+             for dt, dd in zip(dts, dds):
+                 if "외국인" in dt.text:
+                     val_str = dd.select_one('span').text.strip()
+                     result["kospi_foreigner"] = parse_amount(val_str)
+                     result["raw_data"]["kospi_foreigner"] = val_str
+                     break
+
+    except Exception as e: pass
     return result
 
-def get_financial_news():
-    news = {"tech": [], "kr": []}
-    headers = {'User-Agent': 'Mozilla/5.0'}
+# [수정] 경제 캘린더 크롤링 함수 추가 (Investing.com Widget 사용)
+def get_economic_calendar():
+    calendar_data = []
     try:
-        res = requests.get("https://finance.naver.com/news/news_list.naver?mode=LSS2D&section_id=101&section_id2=258", headers=headers, timeout=5)
+        # Investing.com 위젯 (USA, 서울 시간, 한국어)
+        # country=5 (USA), timeZone=88 (Seoul), lang=18 (Korean)
+        url = "https://sslecal2.forexprostools.com/?columns=exc_flags,exc_currency,exc_importance,exc_actual,exc_forecast,exc_previous&features=datepicker,timezone&countries=5&calType=day&timeZone=88&lang=18"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(res.content, 'html.parser')
+        
+        table = soup.select_one('#economicCalendarData')
+        if not table: return []
+        
+        rows = table.select('tr')
+        for row in rows:
+            if not row.get('id', '').startswith('eventRowId'): continue
+            
+            # 시간 추출
+            time_str = row.select_one('.time').text.strip()
+            # 이벤트명
+            event_name = row.select_one('.event').text.strip()
+            # 중요도 (채워진 황소 아이콘 개수)
+            sentiment_cell = row.select_one('.sentiment')
+            importance = 0
+            if sentiment_cell:
+                importance = len(sentiment_cell.select('.grayFullBullishIcon'))
+            
+            # 중요도가 2 이상이거나, 특정 키워드(GDP, CPI, 고용 등)가 있는 경우만 수집
+            if importance >= 2 or any(k in event_name for k in ["GDP", "CPI", "PCE", "고용", "금리", "연준", "FOMC", "판매"]):
+                calendar_data.append({
+                    'time': time_str,
+                    'event': event_name,
+                    'importance': importance
+                })
+            
+    except Exception as e:
+        # print(e)
+        pass
+    return calendar_data
+
+def get_financial_news():
+    news = {"semi": []} # fed 키 제거됨 (캘린더로 대체)
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    # 국내 반도체 위주 뉴스 크롤링
+    try:
+        search_url = "https://finance.naver.com/news/news_search.naver?q=%B9%DD%B5%B5%C3%BC" # 반도체 인코딩
+        res = requests.get(search_url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.content.decode('euc-kr', 'replace'), 'html.parser')
-        items = soup.select('.newsList li dl')
-        for item in items[:5]:
+        items = soup.select('.newsSchResult .newsList li dl')
+        
+        count = 0
+        for item in items:
             at = item.select_one('.articleSubject a')
-            if at: news["tech"].append({"title": at.text.strip(), "link": "https://finance.naver.com" + at['href']})
-        res = requests.get("https://finance.naver.com/news/mainnews.naver", headers=headers, timeout=5)
-        soup = BeautifulSoup(res.content.decode('euc-kr', 'replace'), 'html.parser')
-        items = soup.select('.block1 a')
-        for at in items[:5]:
-            news["kr"].append({"title": at.text.strip(), "link": "https://finance.naver.com" + at['href']})
+            if at:
+                news["semi"].append({"title": at.text.strip(), "link": "https://finance.naver.com" + at['href']})
+                count += 1
+            if count >= 5: break
     except: pass
+    
     return news
 
 def get_all_data():
@@ -156,8 +217,8 @@ def get_all_data():
         return data, None
     except Exception as e: return None, e
 
-# --- 기본 분석 알고리즘 (API 실패 시 작동) ---
-def get_basic_report(m, inv, score):
+# --- 기본 분석 알고리즘 ---
+def get_basic_report(m, inv, score, news, calendar):
     res = {"headline": "", "portfolio": ""}
     
     if score >= 60: res["headline"] = "🚨 고위험 국면입니다. 자산 보호를 최우선으로 해야 합니다."
@@ -165,85 +226,101 @@ def get_basic_report(m, inv, score):
     elif score >= 20: res["headline"] = "⛅ 완만한 흐름입니다. 주도주 중심의 선별적 대응이 필요합니다."
     else: res["headline"] = "☀️ 시장 에너지가 매우 좋습니다. 적극적인 투자 기회입니다."
 
+    # 뉴스 및 캘린더 기반 헤드라인 업데이트
+    top_issue = ""
+    # 1순위: 오늘 중요 경제 일정
+    if calendar:
+        # 중요도 높은 순 -> 시간 빠른 순 정렬
+        sorted_cal = sorted(calendar, key=lambda x: (-x['importance'], x['time']))
+        top_event = sorted_cal[0]
+        top_issue = f"오늘밤 {top_event['event']} 발표"
+    elif news['semi']:
+        top_issue = news['semi'][0]['title']
+    
+    if top_issue:
+        if len(top_issue) > 35: top_issue = top_issue[:35] + "..."
+        res["headline"] += f"<br><span style='font-size:15px; color:#1565c0; font-weight:normal;'>📢 주요 이슈: {top_issue}</span>"
+
     lines = []
-    if m['sox']['pct'] > 1: lines.append("✅ <b>반도체 섹터:</b> 필라델피아 반도체 강세로 투자 심리 호전, 비중 확대 유효")
-    elif m['sox']['pct'] < -2: lines.append("⚠️ <b>반도체 섹터:</b> 지수 낙폭 과대로 인한 변동성 주의, 보수적 접근")
-    else: lines.append("⏺ <b>반도체 섹터:</b> 뚜렷한 방향성 없음, 시장 주도주 흐름 주시")
+    if m['sox']['pct'] > 1: lines.append("✅ <b>반도체:</b> 필라델피아 반도체 강세. 삼성전자/SK하이닉스 등 대형주 중심 접근 유효.")
+    elif m['sox']['pct'] < -2: lines.append("⚠️ <b>반도체:</b> 지수 급락으로 인한 투자 심리 위축. 보수적 관망 필요.")
+    else: lines.append("⏺ <b>반도체:</b> 뚜렷한 방향성 부재. 외인 수급 동향을 살피며 분할 대응.")
 
-    if m['kosdaq']['pct'] > 0: lines.append("✅ <b>국내 시장:</b> 코스닥 및 중소형주 온기 확산 중, 선별 매수 고려")
-    else: lines.append("⚠️ <b>국내 시장:</b> 지수 하락 압력 존재, 현금 비중 관리 필요")
+    if inv['kospi_foreigner'] > 0: lines.append(f"💰 <b>수급:</b> 외국인이 코스피를 {abs(inv['kospi_foreigner'])}억 순매수 중입니다. 대형주에 긍정적입니다.")
+    elif inv['kospi_foreigner'] < 0: lines.append(f"💸 <b>수급:</b> 외국인이 코스피를 {abs(inv['kospi_foreigner'])}억 순매도 중입니다. 환율 변동성에 주의하세요.")
 
-    if m['nas']['pct'] > 0: lines.append("🚀 <b>미국 기술주:</b> 성장주 위주의 상승 랠리 지속, 추세 추종 전략")
-    else: lines.append("⏺ <b>미국 기술주:</b> 금리 부담에 따른 기술주 숨고르기, 분할 매수 대응")
+    if m['nas']['pct'] > 0: lines.append("🚀 <b>미국:</b> 기술주 중심의 상승세 지속. AI 및 성장주 섹터 비중 유지.")
+    else: lines.append("⏺ <b>미국:</b> 금리 및 매크로 변수로 인한 숨고르기 장세.")
 
-    if m['gold']['pct'] > 0.5 or m['vix']['val'] > 20: lines.append("🟡 <b>대체 자산:</b> 불확실성 대비 안전자산(금) 및 헷지 수단 관심 필요")
+    if m['gold']['pct'] > 0.5 or m['vix']['val'] > 20: lines.append("🟡 <b>헷지:</b> 시장 불안정성 확대 가능성. 금/달러 등 안전자산 일부 편입 고려.")
 
     res["portfolio"] = "<br>".join(lines)
     return res
 
-# --- [핵심] AI 분석 함수 (V1 엔드포인트 적용) ---
-def get_ai_portfolio_analysis(api_key, m, inv, score):
+# --- AI 분석 함수 ---
+def get_ai_portfolio_analysis(api_key, m, inv, score, news_titles, calendar_str):
     if not api_key: return None
     
-    # 안정적인 V1 엔드포인트에서 지원하는 모델 목록
-    models = [
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-1.0-pro"
-    ]
-    
+    models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"]
     headers = {'Content-Type': 'application/json'}
-    prompt = f"""당신은 전문 자산운용가입니다. 위험도 {score}점인 현재 시장 상황(매크로, 지수, 수급, 심리 등)을 종합적으로 분석하여 전반적인 주식 투자 운영 가이드를 JSON 형식으로 짜주세요. 
-    JSON 키는 "headline"(시장 총평 한줄), "portfolio"(구체적 운영 가이드, html 태그 사용가능) 두 가지입니다."""
+    
+    prompt = f"""당신은 월스트리트 출신의 전문 펀드매니저입니다. 
+    현재 시장 위험도는 {score}점(100점 만점)입니다.
+    
+    [시장 데이터]
+    - 미국채 10년물: {m['tnx']['val']:.2f}%
+    - 환율: {m['krw']['val']:.0f}원
+    - 필라델피아 반도체: {m['sox']['pct']:.2f}% 변동
+    - 외국인 코스피 수급: {inv['kospi_foreigner']}억원 (양수면 매수, 음수면 매도)
+    
+    [오늘 주요 경제 일정 (미국)]
+    {calendar_str}
+    
+    [주요 뉴스]
+    {news_titles}
+
+    위 데이터를 바탕으로 JSON 형식의 투자 가이드를 작성해주세요.
+    JSON 키: "headline"(시장 총평, 이모지 포함 한줄), "portfolio"(구체적 대응 전략 및 섹터 추천, HTML 태그 사용 가능)
+    """
     
     last_error = ""
-    
     for model_name in models:
-        # [수정됨] v1beta -> v1 으로 변경
         url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={api_key}"
         try:
-            res = requests.post(url, headers=headers, json={"contents": [{"parts": [{"text": prompt + str(m)}]}]}, timeout=10)
-            
+            res = requests.post(url, headers=headers, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=10)
             if res.status_code == 200:
                 text = res.json()['candidates'][0]['content']['parts'][0]['text']
-                # JSON 추출 강화
                 match = re.search(r'\{.*\}', text, re.DOTALL)
-                if match:
-                    return json.loads(match.group(0))
+                if match: return json.loads(match.group(0))
             else:
-                last_error = f"{model_name} Error: {res.status_code}"
-                continue # 다음 모델 시도
-                
+                last_error = f"{res.status_code}"
+                continue
         except Exception as e:
             last_error = str(e)
             continue
             
-    # 모든 모델 실패 시 에러 리턴
-    return {"error": f"AI 연결 실패 (v1 엔드포인트 시도함). 마지막 에러: {last_error}"}
+    return {"error": f"AI 연결 실패. Error: {last_error}"}
 
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 (V0.54)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')}</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.55</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv = get_market_investors()
 news = get_financial_news()
+calendar = get_economic_calendar() # 캘린더 데이터 수집
 
 if data:
-    # --- 게이지 UI 함수 (링크 추가) ---
     def mini_gauge(title, d, min_v, max_v, mode='risk', unit='', url_key=None):
         val = d['val']
         pct = max(0, min(100, (val - min_v) / (max_v - min_v) * 100))
         grad = "linear-gradient(90deg, #4CAF50 0%, #FFEB3B 50%, #F44336 100%)" if mode=='risk' else "linear-gradient(90deg, #2196F3 0%, #EEEEEE 50%, #F44336 100%)"
-        
         display_title = title
         if url_key and url_key in chart_urls:
             display_title = f'<a href="{chart_urls[url_key]}" target="_blank" title="차트 보기">{title} <span style="font-size:10px;">🔗</span></a>'
-            
         st.markdown(f"""<div class="mini-gauge-container"><div class="mini-gauge-title"><span>{display_title}</span><span>{val:,.2f}{unit} ({d['pct']:+.2f}%)</span></div><div class="mini-gauge-track" style="background:{grad}"><div class="mini-gauge-pointer" style="left:{pct}%"></div></div><div class="mini-gauge-labels"><span>{min_v}</span><span>{max_v}</span></div></div>""", unsafe_allow_html=True)
 
-    # URL 딕셔너리
     chart_urls = {
         "tnx": "https://finance.yahoo.com/quote/%5ETNX", "oil": "https://finance.yahoo.com/quote/CL=F",
         "krw": "https://finance.yahoo.com/quote/KRW=X", "nas": "https://finance.yahoo.com/quote/%5EIXIC",
@@ -269,10 +346,11 @@ if data:
         mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 10000, 'stock', url_key='sox') 
         
         k_val = inv['raw_data'].get('kospi_foreigner', '0')
+        f_color = "#d32f2f" if inv['kospi_foreigner'] < 0 else "#1565c0" 
         st.markdown(f"""
         <div style="background:#f9f9f9; padding:15px; border-radius:10px; border:1px solid #ddd; margin-top:5px;">
             <p style="margin:0; font-size:14px; color:#333;">💰 <b>외국인 수급 (코스피)</b></p>
-            <p style="margin:5px 0 0 0; font-size:18px; font-weight:bold; color:#1565c0;">{k_val}억</p>
+            <p style="margin:5px 0 0 0; font-size:18px; font-weight:bold; color:{f_color};">{k_val}억</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -293,19 +371,22 @@ if data:
     st.subheader(f"📊 종합 시장 위험도: {risk_score}점")
     
     # --- 보고서 출력 ---
-    ai_report = get_ai_portfolio_analysis(api_key_input, data, inv, risk_score)
+    news_summary = " / ".join([n['title'] for n in news['semi'][:3]])
+    calendar_str = "\n".join([f"{c['time']} {c['event']} (★{c['importance']})" for c in calendar])
     
-    # AI 에러 발생 여부 확인
+    ai_report = get_ai_portfolio_analysis(st.session_state.api_key, data, inv, risk_score, news_summary, calendar_str)
+    
     is_error = False
     error_msg = ""
     if ai_report and "error" in ai_report:
         is_error = True
         error_msg = ai_report['error']
-        ai_report = None # 에러 시 기본 리포트로 전환
+        ai_report = None
 
     mode_label = "🤖 AI 애널리스트" if ai_report else "⚙️ 기본 분석 엔진"
     if not ai_report: 
-        ai_report = get_basic_report(data, inv, risk_score)
+        # [수정] 기본 리포트에 캘린더 정보 전달
+        ai_report = get_basic_report(data, inv, risk_score, news, calendar)
         if is_error: st.error(f"AI 연결 실패 ({error_msg}). 기본 분석 모드로 전환합니다.") 
     
     st.markdown(f"""
@@ -321,11 +402,30 @@ if data:
     st.markdown("---")
     n1, n2 = st.columns(2)
     with n1:
-        st.markdown("### 🇺🇸 글로벌 테크 뉴스")
-        for n in news['tech']: st.markdown(f"""<div class="news-item"><span class="fed-badge">USA</span><a href="{n['link']}" target="_blank" class="news-title">{n['title']}</a></div>""", unsafe_allow_html=True)
+        # [수정] 경제 캘린더 UI 적용
+        st.markdown("### 🇺🇸 오늘 주요 경제 일정 (미국)")
+        st.caption("📅 [전체 일정 보기](https://kr.investing.com/economic-calendar/) (Investing.com)")
+        
+        if not calendar:
+            st.info("오늘 예정된 주요 미국 경제 지표 발표가 없거나 데이터를 가져오지 못했습니다.")
+        else:
+            # 시간순 정렬
+            sorted_cal = sorted(calendar, key=lambda x: x['time'])
+            for event in sorted_cal:
+                stars = "★" * event['importance']
+                st.markdown(f"""
+                <div class="news-item">
+                    <span class="cal-badge">Event</span>
+                    <span class="cal-time">{event['time']}</span>
+                    <span class="news-title">{event['event']}</span>
+                    <span class="cal-star">{stars}</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
     with n2:
-        st.markdown("### 🇰🇷 국내 시장/반도체 뉴스")
-        for n in news['kr']: st.markdown(f"""<div class="news-item"><span class="fed-badge">KOR</span><a href="{n['link']}" target="_blank" class="news-title">{n['title']}</a></div>""", unsafe_allow_html=True)
+        st.markdown("### 🇰🇷 국내 반도체(Semi) 뉴스")
+        if not news['semi']: st.info("관련된 최신 뉴스가 없습니다.")
+        for n in news['semi']: st.markdown(f"""<div class="news-item"><span class="semi-badge">Chip</span><a href="{n['link']}" target="_blank" class="news-title">{n['title']}</a></div>""", unsafe_allow_html=True)
 
 time.sleep(300)
 st.rerun()
