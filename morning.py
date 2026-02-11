@@ -70,7 +70,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 위험도 분석 V0.55")
+    st.header("⚙️ 위험도 분석 V0.56")
     
     api_input = st.text_input("🔑 Gemini API 키 입력", type="password", value=st.session_state.api_key, placeholder="여기에 키를 입력하세요")
     
@@ -316,7 +316,7 @@ def get_ai_portfolio_analysis(api_key, m, inv, score, news_titles, calendar_str)
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.55</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.56</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv = get_market_investors()
@@ -377,7 +377,8 @@ if data:
     c7, c8, c9, c10 = st.columns(4)
     # 금: 최대치 10000 -> 8000 수정
     with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 8000, 'stock', '$', 'gold') 
-    with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 150, 'stock', '$', 'silver') 
+    # 은: 최대치 150 -> 100 수정
+    with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 100, 'stock', '$', 'silver') 
     # 비트코인: 최대치 200000 -> 150000 수정
     with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 150000, 'stock', '$', 'btc') 
     with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 50, 'risk', url_key='vix') 
