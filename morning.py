@@ -16,7 +16,7 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.56", 
+    page_title="위험도 분석 V0.57", 
     page_icon="📊",
     layout="wide"
 )
@@ -70,7 +70,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 위험도 분석 V0.56")
+    st.header("⚙️ 위험도 분석 V0.57")
     
     api_input = st.text_input("🔑 Gemini API 키 입력", type="password", value=st.session_state.api_key, placeholder="여기에 키를 입력하세요")
     
@@ -94,10 +94,11 @@ def get_weather(city="Daejeon"):
         return res.text.strip() if res.status_code == 200 else "N/A"
     except: return "N/A"
 
-# [핵심 수정] 수급 데이터 2중 체크 (0일 경우 백업 페이지 확인)
-def get_market_investors():
+# [핵심 수정] 수급 데이터 2중 체크 (시장 코드를 입력받도록 수정)
+def get_market_investors(market_code="KOSPI"):
     headers = { 'User-Agent': 'Mozilla/5.0' }
-    result = { "kospi_foreigner": 0, "raw_data": {"kospi_foreigner": "0"} }
+    result = 0
+    raw_val = "0"
     
     def parse_amount(text):
         try: 
@@ -107,42 +108,40 @@ def get_market_investors():
 
     # 1차 시도: 네이버 금융 메인 (장중 실시간)
     try:
-        url_kospi = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
-        res_kospi = requests.get(url_kospi, headers=headers, timeout=5)
-        soup_kospi = BeautifulSoup(res_kospi.content.decode('euc-kr', 'replace'), 'html.parser')
+        url = f"https://finance.naver.com/sise/sise_index.naver?code={market_code}"
+        res = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(res.content.decode('euc-kr', 'replace'), 'html.parser')
         
-        investor_list = soup_kospi.select('.lst_kos_info li')
+        investor_list = soup.select('.lst_kos_info li')
         found = False
         for item in investor_list:
             title = item.select_one('dt').text.strip()
             if "외국인" in title:
-                val_str = item.select_one('dd span').text.strip()
-                result["kospi_foreigner"] = parse_amount(val_str)
-                result["raw_data"]["kospi_foreigner"] = val_str
+                raw_val = item.select_one('dd span').text.strip()
+                result = parse_amount(raw_val)
                 found = True
                 break
         
         if not found:
-             dts = soup_kospi.select('.lst_kos_info dt')
-             dds = soup_kospi.select('.lst_kos_info dd')
+             dts = soup.select('.lst_kos_info dt')
+             dds = soup.select('.lst_kos_info dd')
              for dt, dd in zip(dts, dds):
                  if "외국인" in dt.text:
-                     val_str = dd.select_one('span').text.strip()
-                     result["kospi_foreigner"] = parse_amount(val_str)
-                     result["raw_data"]["kospi_foreigner"] = val_str
+                     raw_val = dd.select_one('span').text.strip()
+                     result = parse_amount(raw_val)
                      break
 
     except Exception as e: pass
 
     # 2차 시도: 값이 0이면 '일별 매매동향' 페이지 확인 (장 마감 후 확정치)
-    if result["kospi_foreigner"] == 0:
+    if result == 0:
         try:
-            url_backup = "https://finance.naver.com/sise/investor.naver"
+            sosok = '0' if market_code == "KOSPI" else '1'
+            url_backup = f"https://finance.naver.com/sise/investor.naver?sosok={sosok}"
             res_backup = requests.get(url_backup, headers=headers, timeout=5)
             soup_backup = BeautifulSoup(res_backup.content.decode('euc-kr', 'replace'), 'html.parser')
             
             # 테이블의 첫 번째 데이터 행 찾기 (오늘 날짜)
-            # 보통 날짜 | 개인 | 외국인 | 기관 순서
             row = soup_backup.select_one('table.type_1 tr:nth-of-type(2)') 
             if row:
                 cols = row.select('td')
@@ -152,11 +151,11 @@ def get_market_investors():
                     parsed_val = parse_amount(val_str_backup)
                     
                     if parsed_val != 0:
-                        result["kospi_foreigner"] = parsed_val
-                        result["raw_data"]["kospi_foreigner"] = val_str_backup
+                        result = parsed_val
+                        raw_val = val_str_backup
         except Exception as e: pass
 
-    return result
+    return {"val": result, "str": raw_val}
 
 def get_economic_calendar():
     calendar_data = []
@@ -233,7 +232,7 @@ def get_all_data():
     except Exception as e: return None, e
 
 # --- 기본 분석 알고리즘 ---
-def get_basic_report(m, inv, score, news, calendar):
+def get_basic_report(m, inv_kospi, inv_kosdaq, score, news, calendar):
     res = {"headline": "", "portfolio": ""}
     
     if score >= 60: res["headline"] = "🚨 고위험 국면입니다. 자산 보호를 최우선으로 해야 합니다."
@@ -258,8 +257,13 @@ def get_basic_report(m, inv, score, news, calendar):
     elif m['sox']['pct'] < -2: lines.append("⚠️ <b>반도체:</b> 지수 급락으로 인한 투자 심리 위축. 보수적 관망 필요.")
     else: lines.append("⏺ <b>반도체:</b> 뚜렷한 방향성 부재. 외인 수급 동향을 살피며 분할 대응.")
 
-    if inv['kospi_foreigner'] > 0: lines.append(f"💰 <b>수급:</b> 외국인이 코스피를 {abs(inv['kospi_foreigner'])}억 순매수 중입니다. 대형주에 긍정적입니다.")
-    elif inv['kospi_foreigner'] < 0: lines.append(f"💸 <b>수급:</b> 외국인이 코스피를 {abs(inv['kospi_foreigner'])}억 순매도 중입니다. 환율 변동성에 주의하세요.")
+    # 코스피 수급 코멘트
+    if inv_kospi['val'] > 0: lines.append(f"💰 <b>코스피 수급:</b> 외국인 {abs(inv_kospi['val'])}억 순매수. 대형주 긍정적.")
+    elif inv_kospi['val'] < 0: lines.append(f"💸 <b>코스피 수급:</b> 외국인 {abs(inv_kospi['val'])}억 순매도. 환율 주의.")
+
+    # 코스닥 수급 코멘트 추가
+    if inv_kosdaq['val'] > 0: lines.append(f"📈 <b>코스닥 수급:</b> 외국인 {abs(inv_kosdaq['val'])}억 순매수. 개별주 활기.")
+    elif inv_kosdaq['val'] < 0: lines.append(f"📉 <b>코스닥 수급:</b> 외국인 {abs(inv_kosdaq['val'])}억 순매도. 변동성 관리 필요.")
 
     if m['nas']['pct'] > 0: lines.append("🚀 <b>미국:</b> 기술주 중심의 상승세 지속. AI 및 성장주 섹터 비중 유지.")
     else: lines.append("⏺ <b>미국:</b> 금리 및 매크로 변수로 인한 숨고르기 장세.")
@@ -270,7 +274,7 @@ def get_basic_report(m, inv, score, news, calendar):
     return res
 
 # --- AI 분석 함수 ---
-def get_ai_portfolio_analysis(api_key, m, inv, score, news_titles, calendar_str):
+def get_ai_portfolio_analysis(api_key, m, inv_kospi, inv_kosdaq, score, news_titles, calendar_str):
     if not api_key: return None
     
     models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"]
@@ -283,7 +287,8 @@ def get_ai_portfolio_analysis(api_key, m, inv, score, news_titles, calendar_str)
     - 미국채 10년물: {m['tnx']['val']:.2f}%
     - 환율: {m['krw']['val']:.0f}원
     - 필라델피아 반도체: {m['sox']['pct']:.2f}% 변동
-    - 외국인 코스피 수급: {inv['kospi_foreigner']}억원 (양수면 매수, 음수면 매도)
+    - 외국인 코스피 수급: {inv_kospi['val']}억원 (양수:매수, 음수:매도)
+    - 외국인 코스닥 수급: {inv_kosdaq['val']}억원 (양수:매수, 음수:매도)
     
     [오늘 주요 경제 일정 (미국)]
     {calendar_str}
@@ -316,10 +321,12 @@ def get_ai_portfolio_analysis(api_key, m, inv, score, news_titles, calendar_str)
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.56</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.57</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
-inv = get_market_investors()
+inv_kospi = get_market_investors("KOSPI")
+inv_kosdaq = get_market_investors("KOSDAQ")
+
 news = get_financial_news()
 calendar = get_economic_calendar() 
 
@@ -346,27 +353,34 @@ if data:
     st.subheader("📈 주요 지표 현황")
     c1, c2, c3 = st.columns(3)
     with c1:
-        # 미국채 10년물: 최대치 5.5 -> 5.0 수정
         mini_gauge("🇺🇸 국채 10년", data['tnx'], 3.0, 5.0, 'risk', '%', 'tnx')
-        mini_gauge("🇺🇸 나스닥", data['nas'], 15000, 40000, 'stock', url_key='nas') 
-        # 코스피: 최대치 8000 -> 7000 수정
+        # 나스닥: 최대치 40000 -> 30000 수정
+        mini_gauge("🇺🇸 나스닥", data['nas'], 15000, 30000, 'stock', url_key='nas') 
         mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 7000, 'stock', url_key='kospi')
     with c2:
-        # WTI 유가: 최대치 100 -> 90 수정
         mini_gauge("🛢️ WTI 유가", data['oil'], 60, 90, 'risk', '$', 'oil')
         mini_gauge("🇺🇸 S&P 500", data['sp5'], 4500, 10000, 'stock', url_key='sp5')
         mini_gauge("🇰🇷 코스닥", data['kosdaq'], 600, 3000, 'stock', url_key='kosdaq') 
     with c3:
-        # 환율: 최대치 1550 -> 1500 수정
         mini_gauge("🇰🇷 환율", data['krw'], 1300, 1500, 'risk', '원', 'krw')
         mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 10000, 'stock', url_key='sox') 
         
-        k_val = inv['raw_data'].get('kospi_foreigner', '0')
-        f_color = "#d32f2f" if inv['kospi_foreigner'] < 0 else "#1565c0" 
+        # 코스피/코스닥 외국인 수급 표시
+        k_val = inv_kospi['str']
+        k_color = "#d32f2f" if inv_kospi['val'] < 0 else "#1565c0" 
+        kq_val = inv_kosdaq['str']
+        kq_color = "#d32f2f" if inv_kosdaq['val'] < 0 else "#1565c0"
+        
         st.markdown(f"""
         <div style="background:#f9f9f9; padding:15px; border-radius:10px; border:1px solid #ddd; margin-top:5px;">
-            <p style="margin:0; font-size:14px; color:#333;">💰 <b>외국인 수급 (코스피)</b></p>
-            <p style="margin:5px 0 0 0; font-size:18px; font-weight:bold; color:{f_color};">{k_val}억</p>
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <span style="font-size:13px; color:#333;"><b>코스피 外</b></span>
+                <span style="font-size:14px; font-weight:bold; color:{k_color};">{k_val}억</span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+                <span style="font-size:13px; color:#333;"><b>코스닥 外</b></span>
+                <span style="font-size:14px; font-weight:bold; color:{kq_color};">{kq_val}억</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -375,20 +389,26 @@ if data:
     # 섹션 2: 대체 자산 & 공포지수
     st.subheader("🛡️ 대체 자산 & 공포지수")
     c7, c8, c9, c10 = st.columns(4)
-    # 금: 최대치 10000 -> 8000 수정
-    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 8000, 'stock', '$', 'gold') 
-    # 은: 최대치 150 -> 100 수정
+    # 금: 최대치 8000 -> 6000 수정
+    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 6000, 'stock', '$', 'gold') 
     with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 100, 'stock', '$', 'silver') 
-    # 비트코인: 최대치 200000 -> 150000 수정
-    with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 150000, 'stock', '$', 'btc') 
-    with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 50, 'risk', url_key='vix') 
+    # 비트코인: 최대치 150000 -> 120000 수정
+    with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 120000, 'stock', '$', 'btc') 
+    # VIX: 최대치 50 -> 40 수정
+    with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 40, 'risk', url_key='vix') 
 
     # --- 위험도 산정 (기준 변경 반영) ---
     def calc_r(v, min_v, max_v): return max(0, min(100, (v - min_v) / (max_v - min_v) * 100))
-    # TNX: Max 5.0 (기존과 동일하지만 유지)
-    # Oil: Max 100 -> 90으로 위험도 민감도 조정
-    # KRW: Max 1550 -> 1500으로 위험도 민감도 조정
-    risk_score = int((calc_r(data['tnx']['val'], 3.5, 5.0) + calc_r(data['oil']['val'], 65, 90) + calc_r(data['krw']['val'], 1350, 1500) + calc_r(data['vix']['val'], 15, 35) + calc_r(-data['sox']['pct'], 0, 10) + calc_r(-min(data['kospi']['pct'], data['kosdaq']['pct']), 0, 10) + calc_r(-inv['kospi_foreigner']/10, 0, 500)) / 7)
+    
+    risk_score = int((
+        calc_r(data['tnx']['val'], 3.5, 5.0) + 
+        calc_r(data['oil']['val'], 65, 90) + 
+        calc_r(data['krw']['val'], 1350, 1500) + 
+        calc_r(data['vix']['val'], 15, 35) + 
+        calc_r(-data['sox']['pct'], 0, 10) + 
+        calc_r(-min(data['kospi']['pct'], data['kosdaq']['pct']), 0, 10) + 
+        calc_r(-(inv_kospi['val'] + inv_kosdaq['val'])/20, 0, 500) 
+    ) / 7)
     
     st.subheader(f"📊 종합 시장 위험도: {risk_score}점")
     
@@ -396,7 +416,7 @@ if data:
     news_summary = " / ".join([n['title'] for n in news['semi'][:3]])
     calendar_str = "\n".join([f"{c['time']} {c['event']} (★{c['importance']})" for c in calendar])
     
-    ai_report = get_ai_portfolio_analysis(st.session_state.api_key, data, inv, risk_score, news_summary, calendar_str)
+    ai_report = get_ai_portfolio_analysis(st.session_state.api_key, data, inv_kospi, inv_kosdaq, risk_score, news_summary, calendar_str)
     
     is_error = False
     error_msg = ""
@@ -407,7 +427,7 @@ if data:
 
     mode_label = "🤖 AI 애널리스트" if ai_report else "⚙️ 기본 분석 엔진"
     if not ai_report: 
-        ai_report = get_basic_report(data, inv, risk_score, news, calendar)
+        ai_report = get_basic_report(data, inv_kospi, inv_kosdaq, risk_score, news, calendar)
         if is_error: st.error(f"AI 연결 실패 ({error_msg}). 기본 분석 모드로 전환합니다.") 
     
     st.markdown(f"""
