@@ -6,18 +6,17 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import re
 import time
-import json 
+import json
 
 # =========================================================
 # 🔑 사장님 전용 설정
 # 1. 아래 따옴표 안에 발급받은 API 키를 붙여넣으세요.
-# 2. 예시: MY_GEMINI_API_KEY = "AIzaSy..."
 MY_GEMINI_API_KEY = ""  
 # =========================================================
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.55", 
+    page_title="위험도 분석 V0.56", 
     page_icon="📊",
     layout="wide"
 )
@@ -95,6 +94,7 @@ def get_weather(city="Daejeon"):
         return res.text.strip() if res.status_code == 200 else "N/A"
     except: return "N/A"
 
+# [핵심 수정] 수급 데이터 2중 체크 (0일 경우 백업 페이지 확인)
 def get_market_investors():
     headers = { 'User-Agent': 'Mozilla/5.0' }
     result = { "kospi_foreigner": 0, "raw_data": {"kospi_foreigner": "0"} }
@@ -105,6 +105,7 @@ def get_market_investors():
             return int(text) if text else 0
         except: return 0
 
+    # 1차 시도: 네이버 금융 메인 (장중 실시간)
     try:
         url_kospi = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
         res_kospi = requests.get(url_kospi, headers=headers, timeout=5)
@@ -132,14 +133,34 @@ def get_market_investors():
                      break
 
     except Exception as e: pass
+
+    # 2차 시도: 값이 0이면 '일별 매매동향' 페이지 확인 (장 마감 후 확정치)
+    if result["kospi_foreigner"] == 0:
+        try:
+            url_backup = "https://finance.naver.com/sise/investor.naver"
+            res_backup = requests.get(url_backup, headers=headers, timeout=5)
+            soup_backup = BeautifulSoup(res_backup.content.decode('euc-kr', 'replace'), 'html.parser')
+            
+            # 테이블의 첫 번째 데이터 행 찾기 (오늘 날짜)
+            # 보통 날짜 | 개인 | 외국인 | 기관 순서
+            row = soup_backup.select_one('table.type_1 tr:nth-of-type(2)') 
+            if row:
+                cols = row.select('td')
+                if len(cols) >= 3:
+                    # 인덱스 0: 날짜, 1: 개인, 2: 외국인, 3: 기관
+                    val_str_backup = cols[2].text.strip()
+                    parsed_val = parse_amount(val_str_backup)
+                    
+                    if parsed_val != 0:
+                        result["kospi_foreigner"] = parsed_val
+                        result["raw_data"]["kospi_foreigner"] = val_str_backup
+        except Exception as e: pass
+
     return result
 
-# [수정] 경제 캘린더 크롤링 함수 추가 (Investing.com Widget 사용)
 def get_economic_calendar():
     calendar_data = []
     try:
-        # Investing.com 위젯 (USA, 서울 시간, 한국어)
-        # country=5 (USA), timeZone=88 (Seoul), lang=18 (Korean)
         url = "https://sslecal2.forexprostools.com/?columns=exc_flags,exc_currency,exc_importance,exc_actual,exc_forecast,exc_previous&features=datepicker,timezone&countries=5&calType=day&timeZone=88&lang=18"
         headers = {'User-Agent': 'Mozilla/5.0'}
         res = requests.get(url, headers=headers, timeout=5)
@@ -152,17 +173,13 @@ def get_economic_calendar():
         for row in rows:
             if not row.get('id', '').startswith('eventRowId'): continue
             
-            # 시간 추출
             time_str = row.select_one('.time').text.strip()
-            # 이벤트명
             event_name = row.select_one('.event').text.strip()
-            # 중요도 (채워진 황소 아이콘 개수)
             sentiment_cell = row.select_one('.sentiment')
             importance = 0
             if sentiment_cell:
                 importance = len(sentiment_cell.select('.grayFullBullishIcon'))
             
-            # 중요도가 2 이상이거나, 특정 키워드(GDP, CPI, 고용 등)가 있는 경우만 수집
             if importance >= 2 or any(k in event_name for k in ["GDP", "CPI", "PCE", "고용", "금리", "연준", "FOMC", "판매"]):
                 calendar_data.append({
                     'time': time_str,
@@ -171,17 +188,15 @@ def get_economic_calendar():
                 })
             
     except Exception as e:
-        # print(e)
         pass
     return calendar_data
 
 def get_financial_news():
-    news = {"semi": []} # fed 키 제거됨 (캘린더로 대체)
+    news = {"semi": []} 
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # 국내 반도체 위주 뉴스 크롤링
     try:
-        search_url = "https://finance.naver.com/news/news_search.naver?q=%B9%DD%B5%B5%C3%BC" # 반도체 인코딩
+        search_url = "https://finance.naver.com/news/news_search.naver?q=%B9%DD%B5%B5%C3%BC" 
         res = requests.get(search_url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.content.decode('euc-kr', 'replace'), 'html.parser')
         items = soup.select('.newsSchResult .newsList li dl')
@@ -226,11 +241,8 @@ def get_basic_report(m, inv, score, news, calendar):
     elif score >= 20: res["headline"] = "⛅ 완만한 흐름입니다. 주도주 중심의 선별적 대응이 필요합니다."
     else: res["headline"] = "☀️ 시장 에너지가 매우 좋습니다. 적극적인 투자 기회입니다."
 
-    # 뉴스 및 캘린더 기반 헤드라인 업데이트
     top_issue = ""
-    # 1순위: 오늘 중요 경제 일정
     if calendar:
-        # 중요도 높은 순 -> 시간 빠른 순 정렬
         sorted_cal = sorted(calendar, key=lambda x: (-x['importance'], x['time']))
         top_event = sorted_cal[0]
         top_issue = f"오늘밤 {top_event['event']} 발표"
@@ -309,7 +321,7 @@ st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.55</div><div 
 data, err = get_all_data()
 inv = get_market_investors()
 news = get_financial_news()
-calendar = get_economic_calendar() # 캘린더 데이터 수집
+calendar = get_economic_calendar() 
 
 if data:
     def mini_gauge(title, d, min_v, max_v, mode='risk', unit='', url_key=None):
@@ -334,15 +346,19 @@ if data:
     st.subheader("📈 주요 지표 현황")
     c1, c2, c3 = st.columns(3)
     with c1:
-        mini_gauge("🇺🇸 국채 10년", data['tnx'], 3.0, 5.5, 'risk', '%', 'tnx')
+        # 미국채 10년물: 최대치 5.5 -> 5.0 수정
+        mini_gauge("🇺🇸 국채 10년", data['tnx'], 3.0, 5.0, 'risk', '%', 'tnx')
         mini_gauge("🇺🇸 나스닥", data['nas'], 15000, 40000, 'stock', url_key='nas') 
-        mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 8000, 'stock', url_key='kospi')
+        # 코스피: 최대치 8000 -> 7000 수정
+        mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 7000, 'stock', url_key='kospi')
     with c2:
-        mini_gauge("🛢️ WTI 유가", data['oil'], 60, 100, 'risk', '$', 'oil')
+        # WTI 유가: 최대치 100 -> 90 수정
+        mini_gauge("🛢️ WTI 유가", data['oil'], 60, 90, 'risk', '$', 'oil')
         mini_gauge("🇺🇸 S&P 500", data['sp5'], 4500, 10000, 'stock', url_key='sp5')
         mini_gauge("🇰🇷 코스닥", data['kosdaq'], 600, 3000, 'stock', url_key='kosdaq') 
     with c3:
-        mini_gauge("🇰🇷 환율", data['krw'], 1300, 1550, 'risk', '원', 'krw')
+        # 환율: 최대치 1550 -> 1500 수정
+        mini_gauge("🇰🇷 환율", data['krw'], 1300, 1500, 'risk', '원', 'krw')
         mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 10000, 'stock', url_key='sox') 
         
         k_val = inv['raw_data'].get('kospi_foreigner', '0')
@@ -359,14 +375,19 @@ if data:
     # 섹션 2: 대체 자산 & 공포지수
     st.subheader("🛡️ 대체 자산 & 공포지수")
     c7, c8, c9, c10 = st.columns(4)
-    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 10000, 'stock', '$', 'gold') 
+    # 금: 최대치 10000 -> 8000 수정
+    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 8000, 'stock', '$', 'gold') 
     with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 150, 'stock', '$', 'silver') 
-    with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 200000, 'stock', '$', 'btc') 
+    # 비트코인: 최대치 200000 -> 150000 수정
+    with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 150000, 'stock', '$', 'btc') 
     with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 50, 'risk', url_key='vix') 
 
-    # --- 위험도 산정 ---
+    # --- 위험도 산정 (기준 변경 반영) ---
     def calc_r(v, min_v, max_v): return max(0, min(100, (v - min_v) / (max_v - min_v) * 100))
-    risk_score = int((calc_r(data['tnx']['val'], 3.5, 5.0) + calc_r(data['oil']['val'], 65, 100) + calc_r(data['krw']['val'], 1350, 1550) + calc_r(data['vix']['val'], 15, 35) + calc_r(-data['sox']['pct'], 0, 10) + calc_r(-min(data['kospi']['pct'], data['kosdaq']['pct']), 0, 10) + calc_r(-inv['kospi_foreigner']/10, 0, 500)) / 7)
+    # TNX: Max 5.0 (기존과 동일하지만 유지)
+    # Oil: Max 100 -> 90으로 위험도 민감도 조정
+    # KRW: Max 1550 -> 1500으로 위험도 민감도 조정
+    risk_score = int((calc_r(data['tnx']['val'], 3.5, 5.0) + calc_r(data['oil']['val'], 65, 90) + calc_r(data['krw']['val'], 1350, 1500) + calc_r(data['vix']['val'], 15, 35) + calc_r(-data['sox']['pct'], 0, 10) + calc_r(-min(data['kospi']['pct'], data['kosdaq']['pct']), 0, 10) + calc_r(-inv['kospi_foreigner']/10, 0, 500)) / 7)
     
     st.subheader(f"📊 종합 시장 위험도: {risk_score}점")
     
@@ -385,7 +406,6 @@ if data:
 
     mode_label = "🤖 AI 애널리스트" if ai_report else "⚙️ 기본 분석 엔진"
     if not ai_report: 
-        # [수정] 기본 리포트에 캘린더 정보 전달
         ai_report = get_basic_report(data, inv, risk_score, news, calendar)
         if is_error: st.error(f"AI 연결 실패 ({error_msg}). 기본 분석 모드로 전환합니다.") 
     
@@ -402,14 +422,12 @@ if data:
     st.markdown("---")
     n1, n2 = st.columns(2)
     with n1:
-        # [수정] 경제 캘린더 UI 적용
         st.markdown("### 🇺🇸 오늘 주요 경제 일정 (미국)")
         st.caption("📅 [전체 일정 보기](https://kr.investing.com/economic-calendar/) (Investing.com)")
         
         if not calendar:
             st.info("오늘 예정된 주요 미국 경제 지표 발표가 없거나 데이터를 가져오지 못했습니다.")
         else:
-            # 시간순 정렬
             sorted_cal = sorted(calendar, key=lambda x: x['time'])
             for event in sorted_cal:
                 stars = "★" * event['importance']
