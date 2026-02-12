@@ -16,7 +16,7 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.61 (2026 스케일 반영)", 
+    page_title="위험도 분석 V0.62 (현실화 & 가중치조정)", 
     page_icon="📊",
     layout="wide"
 )
@@ -69,7 +69,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 위험도 분석 V0.61")
+    st.header("⚙️ 위험도 분석 V0.62")
     
     api_input = st.text_input("🔑 Gemini API 키 입력", type="password", value=st.session_state.api_key, placeholder="여기에 키를 입력하세요")
     if api_input:
@@ -329,7 +329,7 @@ def get_ai_portfolio_analysis(api_key, m, inv_kospi, inv_kosdaq, score, news_tit
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.61 (2026 스케일 반영)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.62 (현실화 & 가중치조정)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv_kospi = get_market_investors("KOSPI")
@@ -375,12 +375,12 @@ if data:
     with m2: mini_gauge("🛢️ WTI 유가", data['oil'], 60, 90, 'risk', '$', 'oil')
     with m3: mini_gauge("🇰🇷 환율", data['krw'], 1300, 1600, 'risk', '원', 'krw')
 
-    # 2. 미국 증시 - S&P 500 (8000), SOX (8000), Nasdaq 스케일 상향
+    # 2. 미국 증시 - S&P 500 (8000), SOX (8000->10000), Nasdaq 스케일 상향
     st.markdown("##### 🇺🇸 미국 증시")
     u1, u2, u3 = st.columns(3)
     with u1: mini_gauge("🇺🇸 나스닥", data['nas'], 20000, 35000, 'stock', url_key='nas') 
     with u2: mini_gauge("🇺🇸 S&P 500", data['sp5'], 5000, 8000, 'stock', url_key='sp5')
-    with u3: mini_gauge("💾 반도체(SOX)", data['sox'], 4000, 8000, 'stock', url_key='sox') 
+    with u3: mini_gauge("💾 반도체(SOX)", data['sox'], 5000, 10000, 'stock', url_key='sox') 
 
     # 3. 한국 증시 - 코스피 (6000), 코스닥 (1500) 스케일 상향
     st.markdown("##### 🇰🇷 한국 증시")
@@ -414,10 +414,10 @@ if data:
     c7, c8, c9, c10 = st.columns(4)
     with c7: mini_gauge("🟡 금(Gold)", data['gold'], 3000, 6000, 'stock', '$', 'gold') 
     with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 40, 120, 'stock', '$', 'silver') 
-    with c9: mini_gauge("₿ 비트코인", data['btc'], 100000, 300000, 'stock', '$', 'btc') 
+    with c9: mini_gauge("₿ 비트코인", data['btc'], 40000, 120000, 'stock', '$', 'btc') 
     with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 25, 'risk', url_key='vix') 
 
-    # --- 위험도 산정 로직 강화 (V0.61) ---
+    # --- 위험도 산정 로직 강화 (V0.62: 가중치 및 민감도 대폭 조정) ---
     def calc_r(v, min_v, max_v): return max(0, min(100, (v - min_v) / (max_v - min_v) * 100))
     
     # Max 전략: "추세 하락(dd)"과 "당일 폭락(pct)" 중 더 위험한 수치를 채택
@@ -434,8 +434,8 @@ if data:
     risk_factors = {
         'tnx': calc_r(data['tnx']['val'], 3.2, 4.8),
         'oil': calc_r(data['oil']['val'], 65, 90),
-        'krw': calc_r(data['krw']['val'], 1300, 1600),  # [수정] 환율 기준 현실화 (1300~1600)
-        'vix': calc_r(data['vix']['val'], 10, 25),      
+        'krw': calc_r(data['krw']['val'], 1320, 1550),  # [수정] 민감도 강화 (1320부터 0점, 1455면 약 58점)
+        'vix': calc_r(data['vix']['val'], 10, 22),      # [수정] 민감도 강화 (10~22) -> 15면 약 42점
         'sox': sox_risk,                                
         'mkt': mkt_risk,                                
         'inv': calc_r(-(inv_kospi['val'] + inv_kosdaq['val'])/10, 0, 500)
@@ -445,12 +445,12 @@ if data:
     weighted_score = (
         risk_factors['tnx'] * 1.0 +
         risk_factors['oil'] * 0.5 +
-        risk_factors['krw'] * 1.5 +  # 환율 가중치 1.5배
+        risk_factors['krw'] * 2.0 +  # [수정] 환율 가중치 2.0배 (핵심)
         risk_factors['vix'] * 1.0 +
-        risk_factors['sox'] * 1.5 +  # 반도체 심리 가중치 1.5배
+        risk_factors['sox'] * 2.0 +  # [수정] 반도체 심리 가중치 2.0배 (핵심)
         risk_factors['mkt'] * 1.0 +
         risk_factors['inv'] * 1.5    # 수급 가중치 1.5배
-    ) / 8.0 # 가중치 총합
+    ) / 9.0 # [수정] 가중치 총합 (8->9)
     
     risk_score = int(weighted_score)
     
