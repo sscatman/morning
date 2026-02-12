@@ -367,25 +367,27 @@ if data:
 
     # 섹션 1: 주요 지표 현황
     st.subheader("📈 주요 지표 현황")
-    c1, c2, c3 = st.columns(3)
-    
-    # 1열: 국채 -> S&P -> 코스피
-    with c1:
-        mini_gauge("🇺🇸 국채 10년", data['tnx'], 3.2, 4.8, 'risk', '%', 'tnx') # 범위 축소 (3.0~5.0 -> 3.2~4.8)
-        mini_gauge("🇺🇸 S&P 500", data['sp5'], 4500, 7000, 'stock', url_key='sp5')
-        mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 3000, 'stock', url_key='kospi') # 범위 현실화
-        
-    # 2열: 유가 -> 반도체 -> 코스닥
-    with c2:
-        mini_gauge("🛢️ WTI 유가", data['oil'], 60, 90, 'risk', '$', 'oil')
-        mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 6000, 'stock', url_key='sox') 
-        mini_gauge("🇰🇷 코스닥", data['kosdaq'], 600, 1000, 'stock', url_key='kosdaq') # 범위 현실화
-        
-    # 3열: 나스닥 -> 환율 -> 수급
-    with c3:
-        mini_gauge("🇺🇸 나스닥", data['nas'], 15000, 30000, 'stock', url_key='nas') 
-        mini_gauge("🇰🇷 환율", data['krw'], 1250, 1450, 'risk', '원', 'krw') # 범위 강화 (1300~1500 -> 1250~1450)
-        
+
+    # 1. 주요 거시 지표 (Macro)
+    st.markdown("##### 🌏 주요 거시 지표")
+    m1, m2, m3 = st.columns(3)
+    with m1: mini_gauge("🇺🇸 국채 10년", data['tnx'], 3.2, 4.8, 'risk', '%', 'tnx')
+    with m2: mini_gauge("🛢️ WTI 유가", data['oil'], 60, 90, 'risk', '$', 'oil')
+    with m3: mini_gauge("🇰🇷 환율", data['krw'], 1250, 1450, 'risk', '원', 'krw')
+
+    # 2. 미국 증시
+    st.markdown("##### 🇺🇸 미국 증시")
+    u1, u2, u3 = st.columns(3)
+    with u1: mini_gauge("🇺🇸 나스닥", data['nas'], 15000, 30000, 'stock', url_key='nas') 
+    with u2: mini_gauge("🇺🇸 S&P 500", data['sp5'], 4500, 7000, 'stock', url_key='sp5')
+    with u3: mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 6000, 'stock', url_key='sox') 
+
+    # 3. 한국 증시
+    st.markdown("##### 🇰🇷 한국 증시")
+    k1, k2, k3 = st.columns(3)
+    with k1: mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 3000, 'stock', url_key='kospi')
+    with k2: mini_gauge("🇰🇷 코스닥", data['kosdaq'], 600, 1000, 'stock', url_key='kosdaq')
+    with k3:
         # 코스피/코스닥 외국인 수급 표시
         k_val = inv_kospi['str']
         k_color = "#d32f2f" if inv_kospi['val'] < 0 else "#1565c0" 
