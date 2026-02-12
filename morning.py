@@ -16,7 +16,7 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.58", 
+    page_title="위험도 분석 V0.59 (민감도 강화)", 
     page_icon="📊",
     layout="wide"
 )
@@ -55,7 +55,6 @@ st.markdown("""
     .guide-section-title { font-size: 16px; font-weight: 700; margin-top: 20px; margin-bottom: 10px; color: #1565c0 !important; }
     .guide-text { font-size: 15px; line-height: 1.7; margin-bottom: 10px; color: #333 !important; }
     .portfolio-card { background-color: #f0f4f8; padding: 15px; border-radius: 10px; margin-top: 15px; border-left: 5px solid #1565c0; }
-    .portfolio-item { margin-bottom: 8px; font-size: 14.5px; line-height: 1.6; }
     
     .news-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
     .news-title { font-weight: 600; text-decoration: none; color: #333; }
@@ -70,7 +69,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 위험도 분석 V0.58")
+    st.header("⚙️ 위험도 분석 V0.59")
     
     api_input = st.text_input("🔑 Gemini API 키 입력", type="password", value=st.session_state.api_key, placeholder="여기에 키를 입력하세요")
     if api_input:
@@ -218,13 +217,24 @@ def get_all_data():
     data = {}
     try:
         for key, symbol in tickers.items():
-            df = yf.download(symbol, period="5d", progress=False)
+            df = yf.download(symbol, period="10d", progress=False) # 10일치로 늘려서 추세 확인
             if len(df) < 2: df = pd.concat([df, df])
+            
+            # 최신값
             curr = df['Close'].iloc[-1].item() if isinstance(df['Close'].iloc[-1], pd.Series) else df['Close'].iloc[-1]
+            # 전일값
             prev = df['Close'].iloc[-2].item() if isinstance(df['Close'].iloc[-2], pd.Series) else df['Close'].iloc[-2]
+            
+            # 5일 최고가 (추세 확인용)
+            high_5d = df['Close'].iloc[-5:].max().item() if len(df) >= 5 else curr
+            
             diff = curr - prev
             pct = (diff / prev) * 100
-            data[key] = {'val': curr, 'diff': diff, 'pct': pct}
+            
+            # 고점 대비 하락률 (Drawdown) - 양수로 변환 (예: 5% 하락이면 5.0)
+            dd = ((high_5d - curr) / high_5d) * 100 if high_5d > 0 else 0
+            
+            data[key] = {'val': curr, 'diff': diff, 'pct': pct, 'dd': dd}
         return data, None
     except Exception as e: return None, e
 
@@ -232,10 +242,10 @@ def get_all_data():
 def get_basic_report(m, inv_kospi, inv_kosdaq, score, news, calendar):
     res = {"headline": "", "portfolio": ""}
     
-    if score >= 60: res["headline"] = "🚨 고위험 국면입니다. 자산 보호를 최우선으로 해야 합니다."
-    elif score >= 40: res["headline"] = "⚖️ 변동성이 큰 혼조세입니다. 방어적인 포지션이 유리합니다."
-    elif score >= 20: res["headline"] = "⛅ 완만한 흐름입니다. 주도주 중심의 선별적 대응이 필요합니다."
-    else: res["headline"] = "☀️ 시장 에너지가 매우 좋습니다. 적극적인 투자 기회입니다."
+    if score >= 70: res["headline"] = "🚨 [매우 위험] 현금 100% 확보 권장. 소나기는 피해야 합니다."
+    elif score >= 50: res["headline"] = "⚠️ [경계] 시장 변동성 확대. 방어적 포지션 및 헷지 필요."
+    elif score >= 30: res["headline"] = "⚖️ [혼조세] 방향성 탐색 구간. 주도주 위주의 선별적 접근."
+    else: res["headline"] = "⛅ [양호] 투자 심리 안정. 조정 시 매수 관점 유효."
 
     top_issue = ""
     if calendar:
@@ -250,22 +260,21 @@ def get_basic_report(m, inv_kospi, inv_kosdaq, score, news, calendar):
         res["headline"] += f"<br><span style='font-size:15px; color:#1565c0; font-weight:normal;'>📢 주요 이슈: {top_issue}</span>"
 
     lines = []
-    if m['sox']['pct'] > 1: lines.append("✅ <b>반도체:</b> 필라델피아 반도체 강세. 삼성전자/SK하이닉스 등 대형주 중심 접근 유효.")
-    elif m['sox']['pct'] < -2: lines.append("⚠️ <b>반도체:</b> 지수 급락으로 인한 투자 심리 위축. 보수적 관망 필요.")
-    else: lines.append("⏺ <b>반도체:</b> 뚜렷한 방향성 부재. 외인 수급 동향을 살피며 분할 대응.")
+    
+    # 반도체 - 추세(dd)까지 고려
+    if m['sox']['pct'] > 1.5: lines.append("✅ <b>반도체:</b> 필라델피아 반도체 급등. 대형주 중심 비중 확대.")
+    elif m['sox']['dd'] > 3.0: lines.append(f"⚠️ <b>반도체:</b> 단기 고점 대비 {m['sox']['dd']:.1f}% 조정 중. 섣부른 매수 자제.")
+    else: lines.append("⏺ <b>반도체:</b> 방향성 탐색 중. 외인 수급 확인 후 분할 대응.")
 
     # 코스피 수급 코멘트
-    if inv_kospi['val'] > 0: lines.append(f"💰 <b>코스피 수급:</b> 외국인 {abs(inv_kospi['val'])}억 순매수. 대형주 긍정적.")
-    elif inv_kospi['val'] < 0: lines.append(f"💸 <b>코스피 수급:</b> 외국인 {abs(inv_kospi['val'])}억 순매도. 환율 주의.")
+    if inv_kospi['val'] > 0: lines.append(f"💰 <b>코스피:</b> 외국인 {abs(inv_kospi['val'])}억 순매수. 수급 양호.")
+    elif inv_kospi['val'] < 0: lines.append(f"💸 <b>코스피:</b> 외국인 {abs(inv_kospi['val'])}억 순매도. 환율/수급 부담.")
 
     # 코스닥 수급 코멘트 추가
-    if inv_kosdaq['val'] > 0: lines.append(f"📈 <b>코스닥 수급:</b> 외국인 {abs(inv_kosdaq['val'])}억 순매수. 개별주 활기.")
-    elif inv_kosdaq['val'] < 0: lines.append(f"📉 <b>코스닥 수급:</b> 외국인 {abs(inv_kosdaq['val'])}억 순매도. 변동성 관리 필요.")
+    if inv_kosdaq['val'] > 0: lines.append(f"📈 <b>코스닥:</b> 외국인 {abs(inv_kosdaq['val'])}억 순매수. 개별주 장세.")
+    else: lines.append(f"📉 <b>코스닥:</b> 외국인 {abs(inv_kosdaq['val'])}억 순매도. 리스크 관리.")
 
-    if m['nas']['pct'] > 0: lines.append("🚀 <b>미국:</b> 기술주 중심의 상승세 지속. AI 및 성장주 섹터 비중 유지.")
-    else: lines.append("⏺ <b>미국:</b> 금리 및 매크로 변수로 인한 숨고르기 장세.")
-
-    if m['gold']['pct'] > 0.5 or m['vix']['val'] > 20: lines.append("🟡 <b>헷지:</b> 시장 불안정성 확대 가능성. 금/달러 등 안전자산 일부 편입 고려.")
+    if m['gold']['pct'] > 0.5 or m['vix']['val'] > 18: lines.append("🟡 <b>전략:</b> 시장 불안감 상존. 금/달러 등 헷지 자산 관심.")
 
     res["portfolio"] = "<br>".join(lines)
     return res
@@ -277,24 +286,26 @@ def get_ai_portfolio_analysis(api_key, m, inv_kospi, inv_kosdaq, score, news_tit
     models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"]
     headers = {'Content-Type': 'application/json'}
     
-    prompt = f"""당신은 월스트리트 출신의 전문 펀드매니저입니다. 
-    현재 시장 위험도는 {score}점(100점 만점)입니다.
+    prompt = f"""당신은 20년 경력의 펀드매니저입니다.
+    현재 자체 알고리즘으로 산출된 시장 위험도는 {score}점(100점 만점)입니다.
+    (점수가 높을수록 위험, 50점 이상이면 경계 단계)
     
-    [시장 데이터]
-    - 미국채 10년물: {m['tnx']['val']:.2f}%
-    - 환율: {m['krw']['val']:.0f}원
-    - 필라델피아 반도체: {m['sox']['pct']:.2f}% 변동
-    - 외국인 코스피 수급: {inv_kospi['val']}억원 (양수:매수, 음수:매도)
-    - 외국인 코스닥 수급: {inv_kosdaq['val']}억원 (양수:매수, 음수:매도)
+    [핵심 지표]
+    - 미국채 10년물: {m['tnx']['val']:.2f}% (전일대비 {m['tnx']['diff']:.2f})
+    - 원/달러 환율: {m['krw']['val']:.0f}원
+    - 필라델피아 반도체: {m['sox']['pct']:.2f}% 등락 (고점 대비 {m['sox']['dd']:.1f}% 하락 중)
+    - 외국인 코스피: {inv_kospi['val']}억원
+    - 외국인 코스닥: {inv_kosdaq['val']}억원
     
-    [오늘 주요 경제 일정 (미국)]
+    [오늘 주요 일정]
     {calendar_str}
     
-    [주요 뉴스]
+    [뉴스 헤드라인]
     {news_titles}
 
-    위 데이터를 바탕으로 JSON 형식의 투자 가이드를 작성해주세요.
-    JSON 키: "headline"(시장 총평, 이모지 포함 한줄), "portfolio"(구체적 대응 전략 및 섹터 추천, HTML 태그 사용 가능)
+    위 데이터를 종합하여 투자 가이드를 JSON으로 작성해주세요.
+    말투는 간결하고 전문적으로(해요체).
+    JSON 키: "headline"(시장 총평, 이모지 포함), "portfolio"(구체적 전략, HTML 태그 사용 가능)
     """
     
     last_error = ""
@@ -318,7 +329,7 @@ def get_ai_portfolio_analysis(api_key, m, inv_kospi, inv_kosdaq, score, news_tit
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.58</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.59 (민감도↑)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv_kospi = get_market_investors("KOSPI")
@@ -338,9 +349,11 @@ if data:
         val = d['val']
         pct = max(0, min(100, (val - min_v) / (max_v - min_v) * 100))
         grad = "linear-gradient(90deg, #4CAF50 0%, #FFEB3B 50%, #F44336 100%)" if mode=='risk' else "linear-gradient(90deg, #2196F3 0%, #EEEEEE 50%, #F44336 100%)"
+        
         display_title = title
         if url_key and url_key in chart_urls:
             display_title = f'<a href="{chart_urls[url_key]}" target="_blank" title="차트 보기">{title} <span style="font-size:10px;">🔗</span></a>'
+        
         st.markdown(f"""<div class="mini-gauge-container"><div class="mini-gauge-title"><span>{display_title}</span><span>{val:,.2f}{unit} ({d['pct']:+.2f}%)</span></div><div class="mini-gauge-track" style="background:{grad}"><div class="mini-gauge-pointer" style="left:{pct}%"></div></div><div class="mini-gauge-labels"><span>{min_v}</span><span>{max_v}</span></div></div>""", unsafe_allow_html=True)
 
     chart_urls = {
@@ -356,16 +369,16 @@ if data:
     st.subheader("📈 주요 지표 현황")
     c1, c2, c3 = st.columns(3)
     with c1:
-        mini_gauge("🇺🇸 국채 10년", data['tnx'], 3.0, 5.0, 'risk', '%', 'tnx')
+        mini_gauge("🇺🇸 국채 10년", data['tnx'], 3.2, 4.8, 'risk', '%', 'tnx') # 범위 축소 (3.0~5.0 -> 3.2~4.8)
         mini_gauge("🇺🇸 나스닥", data['nas'], 15000, 30000, 'stock', url_key='nas') 
-        mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 7000, 'stock', url_key='kospi')
+        mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 3000, 'stock', url_key='kospi') # 범위 현실화
     with c2:
         mini_gauge("🛢️ WTI 유가", data['oil'], 60, 90, 'risk', '$', 'oil')
-        mini_gauge("🇺🇸 S&P 500", data['sp5'], 4500, 10000, 'stock', url_key='sp5')
-        mini_gauge("🇰🇷 코스닥", data['kosdaq'], 600, 3000, 'stock', url_key='kosdaq') 
+        mini_gauge("🇺🇸 S&P 500", data['sp5'], 4500, 7000, 'stock', url_key='sp5')
+        mini_gauge("🇰🇷 코스닥", data['kosdaq'], 600, 1000, 'stock', url_key='kosdaq') # 범위 현실화
     with c3:
-        mini_gauge("🇰🇷 환율", data['krw'], 1300, 1500, 'risk', '원', 'krw')
-        mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 10000, 'stock', url_key='sox') 
+        mini_gauge("🇰🇷 환율", data['krw'], 1250, 1450, 'risk', '원', 'krw') # 범위 강화 (1300~1500 -> 1250~1450)
+        mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 6000, 'stock', url_key='sox') 
         
         # 코스피/코스닥 외국인 수급 표시
         k_val = inv_kospi['str']
@@ -391,25 +404,54 @@ if data:
     # 섹션 2: 대체 자산 & 공포지수
     st.subheader("🛡️ 대체 자산 & 공포지수")
     c7, c8, c9, c10 = st.columns(4)
-    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 6000, 'stock', '$', 'gold') 
-    with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 100, 'stock', '$', 'silver') 
-    with c9: mini_gauge("₿ 비트코인", data['btc'], 0, 120000, 'stock', '$', 'btc') 
-    with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 40, 'risk', url_key='vix') 
+    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 4000, 'stock', '$', 'gold') 
+    with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 50, 'stock', '$', 'silver') 
+    with c9: mini_gauge("₿ 비트코인", data['btc'], 50000, 150000, 'stock', '$', 'btc') 
+    with c10: mini_gauge("😨 VIX(공포)", data['vix'], 12, 30, 'risk', url_key='vix') # 범위 강화 (15~35 -> 12~30)
 
-    # --- 위험도 산정 (기준 변경 반영) ---
+    # --- 위험도 산정 로직 강화 (V0.59) ---
     def calc_r(v, min_v, max_v): return max(0, min(100, (v - min_v) / (max_v - min_v) * 100))
     
-    risk_score = int((
-        calc_r(data['tnx']['val'], 3.5, 5.0) + 
-        calc_r(data['oil']['val'], 65, 90) + 
-        calc_r(data['krw']['val'], 1350, 1500) + 
-        calc_r(data['vix']['val'], 15, 35) + 
-        calc_r(-data['sox']['pct'], 0, 10) + 
-        calc_r(-min(data['kospi']['pct'], data['kosdaq']['pct']), 0, 10) + 
-        calc_r(-(inv_kospi['val'] + inv_kosdaq['val'])/20, 0, 500) 
-    ) / 7)
+    # [수정 포인트]
+    # 1. 환율(KRW) 기준을 1280원으로 낮춤 (1350은 너무 관대함) -> 현재 1400원이면 점수 대폭 상승
+    # 2. 반도체(SOX)와 시장(KOSPI)은 '전일 등락'이 아니라 '5일 고점 대비 하락폭(dd)'을 사용해 추세 반영
+    # 3. 외국인 수급은 매도 규모에 대한 민감도를 2배 높임 (/20 -> /10)
     
-    st.subheader(f"📊 종합 시장 위험도: {risk_score}점")
+    risk_factors = {
+        'tnx': calc_r(data['tnx']['val'], 3.2, 4.8),     # 국채 금리: 3.2% 이상부터 위험 인식
+        'oil': calc_r(data['oil']['val'], 65, 90),       # 유가
+        'krw': calc_r(data['krw']['val'], 1280, 1450),   # 환율: 1280원부터 위험 카운트 (중요)
+        'vix': calc_r(data['vix']['val'], 12, 30),       # 공포지수: 12부터 민감하게 반응
+        'sox': calc_r(data['sox']['dd'], 0, 6),          # 반도체: 고점대비 6% 빠지면 만점 (추세 반영)
+        'mkt': calc_r(data['kospi']['dd'], 0, 5),        # 코스피: 고점대비 5% 빠지면 만점
+        'inv': calc_r(-(inv_kospi['val'] + inv_kosdaq['val'])/10, 0, 500) # 수급: 5000억 매도시 만점
+    }
+    
+    # 가중치 부여 (환율과 반도체, 수급이 한국장엔 깡패임)
+    weighted_score = (
+        risk_factors['tnx'] * 1.0 +
+        risk_factors['oil'] * 0.5 +
+        risk_factors['krw'] * 1.5 +  # 환율 가중치 1.5배
+        risk_factors['vix'] * 1.0 +
+        risk_factors['sox'] * 1.5 +  # 반도체 심리 가중치 1.5배
+        risk_factors['mkt'] * 1.0 +
+        risk_factors['inv'] * 1.5    # 수급 가중치 1.5배
+    ) / 8.0 # 가중치 총합
+    
+    risk_score = int(weighted_score)
+    
+    # 위험도 색상 표시
+    score_color = "#4CAF50" # Green
+    if risk_score >= 70: score_color = "#D32F2F" # Red
+    elif risk_score >= 50: score_color = "#FF9800" # Orange
+    elif risk_score >= 30: score_color = "#FFC107" # Yellow
+    
+    st.subheader(f"📊 종합 시장 위험도: : {risk_score}점")
+    st.markdown(f"""
+    <div style="width:100%; height:20px; background:#eee; border-radius:10px; margin-bottom:10px;">
+        <div style="width:{risk_score}%; height:100%; background:{score_color}; border-radius:10px; transition:1s;"></div>
+    </div>
+    """, unsafe_allow_html=True)
     
     # --- 보고서 출력 ---
     news_summary = " / ".join([n['title'] for n in news['semi'][:3]])
