@@ -16,7 +16,7 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.60 (즉각반영)", 
+    page_title="위험도 분석 V0.61 (2026 스케일 반영)", 
     page_icon="📊",
     layout="wide"
 )
@@ -69,7 +69,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 위험도 분석 V0.60")
+    st.header("⚙️ 위험도 분석 V0.61")
     
     api_input = st.text_input("🔑 Gemini API 키 입력", type="password", value=st.session_state.api_key, placeholder="여기에 키를 입력하세요")
     if api_input:
@@ -329,7 +329,7 @@ def get_ai_portfolio_analysis(api_key, m, inv_kospi, inv_kosdaq, score, news_tit
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.60 (즉각반영)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.61 (2026 스케일 반영)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv_kospi = get_market_investors("KOSPI")
@@ -368,25 +368,25 @@ if data:
     # 섹션 1: 주요 지표 현황
     st.subheader("📈 주요 지표 현황")
 
-    # 1. 주요 거시 지표 (Macro)
+    # 1. 주요 거시 지표 (Macro) - 환율 스케일 상향 (1300~1600)
     st.markdown("##### 🌏 주요 거시 지표")
     m1, m2, m3 = st.columns(3)
     with m1: mini_gauge("🇺🇸 국채 10년", data['tnx'], 3.2, 4.8, 'risk', '%', 'tnx')
     with m2: mini_gauge("🛢️ WTI 유가", data['oil'], 60, 90, 'risk', '$', 'oil')
-    with m3: mini_gauge("🇰🇷 환율", data['krw'], 1250, 1450, 'risk', '원', 'krw')
+    with m3: mini_gauge("🇰🇷 환율", data['krw'], 1300, 1600, 'risk', '원', 'krw')
 
-    # 2. 미국 증시
+    # 2. 미국 증시 - S&P 500 (8000), SOX (8000), Nasdaq 스케일 상향
     st.markdown("##### 🇺🇸 미국 증시")
     u1, u2, u3 = st.columns(3)
-    with u1: mini_gauge("🇺🇸 나스닥", data['nas'], 15000, 30000, 'stock', url_key='nas') 
-    with u2: mini_gauge("🇺🇸 S&P 500", data['sp5'], 4500, 7000, 'stock', url_key='sp5')
-    with u3: mini_gauge("💾 반도체(SOX)", data['sox'], 3000, 6000, 'stock', url_key='sox') 
+    with u1: mini_gauge("🇺🇸 나스닥", data['nas'], 20000, 35000, 'stock', url_key='nas') 
+    with u2: mini_gauge("🇺🇸 S&P 500", data['sp5'], 5000, 8000, 'stock', url_key='sp5')
+    with u3: mini_gauge("💾 반도체(SOX)", data['sox'], 4000, 8000, 'stock', url_key='sox') 
 
-    # 3. 한국 증시
+    # 3. 한국 증시 - 코스피 (6000), 코스닥 (1500) 스케일 상향
     st.markdown("##### 🇰🇷 한국 증시")
     k1, k2, k3 = st.columns(3)
-    with k1: mini_gauge("🇰🇷 코스피", data['kospi'], 2000, 3000, 'stock', url_key='kospi')
-    with k2: mini_gauge("🇰🇷 코스닥", data['kosdaq'], 600, 1000, 'stock', url_key='kosdaq')
+    with k1: mini_gauge("🇰🇷 코스피", data['kospi'], 3000, 6000, 'stock', url_key='kospi')
+    with k2: mini_gauge("🇰🇷 코스닥", data['kosdaq'], 800, 1500, 'stock', url_key='kosdaq')
     with k3:
         # 코스피/코스닥 외국인 수급 표시
         k_val = inv_kospi['str']
@@ -409,20 +409,18 @@ if data:
 
     st.markdown("---")
     
-    # 섹션 2: 대체 자산 & 공포지수
+    # 섹션 2: 대체 자산 & 공포지수 - 금/은/비트코인 상향
     st.subheader("🛡️ 대체 자산 & 공포지수")
     c7, c8, c9, c10 = st.columns(4)
-    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 4000, 'stock', '$', 'gold') 
-    with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 50, 'stock', '$', 'silver') 
-    with c9: mini_gauge("₿ 비트코인", data['btc'], 50000, 150000, 'stock', '$', 'btc') 
-    with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 25, 'risk', url_key='vix') # 범위 강화 (12~30 -> 10~25)
+    with c7: mini_gauge("🟡 금(Gold)", data['gold'], 3000, 6000, 'stock', '$', 'gold') 
+    with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 40, 120, 'stock', '$', 'silver') 
+    with c9: mini_gauge("₿ 비트코인", data['btc'], 100000, 300000, 'stock', '$', 'btc') 
+    with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 25, 'risk', url_key='vix') 
 
-    # --- 위험도 산정 로직 강화 (V0.60) ---
+    # --- 위험도 산정 로직 강화 (V0.61) ---
     def calc_r(v, min_v, max_v): return max(0, min(100, (v - min_v) / (max_v - min_v) * 100))
     
-    # [수정 V0.60] 
     # Max 전략: "추세 하락(dd)"과 "당일 폭락(pct)" 중 더 위험한 수치를 채택
-    
     sox_risk = max(
         calc_r(data['sox']['dd'], 0, 8),          # 고점 대비 하락 (추세)
         calc_r(-data['sox']['pct'], 0, 3)         # 당일 하락 (충격) - 3% 빠지면 만점
@@ -436,10 +434,10 @@ if data:
     risk_factors = {
         'tnx': calc_r(data['tnx']['val'], 3.2, 4.8),
         'oil': calc_r(data['oil']['val'], 65, 90),
-        'krw': calc_r(data['krw']['val'], 1280, 1450),
-        'vix': calc_r(data['vix']['val'], 10, 25),      # VIX 기준 바닥 낮춤 (10부터 위험 인식)
-        'sox': sox_risk,                                # Max 로직 적용
-        'mkt': mkt_risk,                                # Max 로직 적용
+        'krw': calc_r(data['krw']['val'], 1300, 1600),  # [수정] 환율 기준 현실화 (1300~1600)
+        'vix': calc_r(data['vix']['val'], 10, 25),      
+        'sox': sox_risk,                                
+        'mkt': mkt_risk,                                
         'inv': calc_r(-(inv_kospi['val'] + inv_kosdaq['val'])/10, 0, 500)
     }
     
