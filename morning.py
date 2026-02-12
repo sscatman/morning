@@ -16,7 +16,7 @@ MY_GEMINI_API_KEY = ""
 
 # --- 앱 기본 설정 ---
 st.set_page_config(
-    page_title="위험도 분석 V0.59 (민감도 강화)", 
+    page_title="위험도 분석 V0.60 (즉각반영)", 
     page_icon="📊",
     layout="wide"
 )
@@ -69,7 +69,7 @@ st.markdown("""
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.header("⚙️ 위험도 분석 V0.59")
+    st.header("⚙️ 위험도 분석 V0.60")
     
     api_input = st.text_input("🔑 Gemini API 키 입력", type="password", value=st.session_state.api_key, placeholder="여기에 키를 입력하세요")
     if api_input:
@@ -329,7 +329,7 @@ def get_ai_portfolio_analysis(api_key, m, inv_kospi, inv_kosdaq, score, news_tit
 # --- 실행부 ---
 weather = get_weather()
 kst_now = datetime.utcnow() + timedelta(hours=9)
-st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.59 (민감도↑)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="header-title">📊 위험도 분석 V0.60 (즉각반영)</div><div class="sub-info">📍 대전: {weather} | 🕒 {kst_now.strftime('%Y-%m-%d %H:%M')} (한국시간)</div>""", unsafe_allow_html=True)
 
 data, err = get_all_data()
 inv_kospi = get_market_investors("KOSPI")
@@ -415,24 +415,32 @@ if data:
     with c7: mini_gauge("🟡 금(Gold)", data['gold'], 2000, 4000, 'stock', '$', 'gold') 
     with c8: mini_gauge("⚪ 은(Silver)", data['silver'], 20, 50, 'stock', '$', 'silver') 
     with c9: mini_gauge("₿ 비트코인", data['btc'], 50000, 150000, 'stock', '$', 'btc') 
-    with c10: mini_gauge("😨 VIX(공포)", data['vix'], 12, 30, 'risk', url_key='vix') # 범위 강화 (15~35 -> 12~30)
+    with c10: mini_gauge("😨 VIX(공포)", data['vix'], 10, 25, 'risk', url_key='vix') # 범위 강화 (12~30 -> 10~25)
 
-    # --- 위험도 산정 로직 강화 (V0.59) ---
+    # --- 위험도 산정 로직 강화 (V0.60) ---
     def calc_r(v, min_v, max_v): return max(0, min(100, (v - min_v) / (max_v - min_v) * 100))
     
-    # [수정 포인트]
-    # 1. 환율(KRW) 기준을 1280원으로 낮춤 (1350은 너무 관대함) -> 현재 1400원이면 점수 대폭 상승
-    # 2. 반도체(SOX)와 시장(KOSPI)은 '전일 등락'이 아니라 '5일 고점 대비 하락폭(dd)'을 사용해 추세 반영
-    # 3. 외국인 수급은 매도 규모에 대한 민감도를 2배 높임 (/20 -> /10)
+    # [수정 V0.60] 
+    # Max 전략: "추세 하락(dd)"과 "당일 폭락(pct)" 중 더 위험한 수치를 채택
     
+    sox_risk = max(
+        calc_r(data['sox']['dd'], 0, 8),          # 고점 대비 하락 (추세)
+        calc_r(-data['sox']['pct'], 0, 3)         # 당일 하락 (충격) - 3% 빠지면 만점
+    )
+    
+    mkt_risk = max(
+        calc_r(data['kospi']['dd'], 0, 5),
+        calc_r(-data['kospi']['pct'], 0, 2)       # 코스피 2% 빠지면 만점
+    )
+
     risk_factors = {
-        'tnx': calc_r(data['tnx']['val'], 3.2, 4.8),     # 국채 금리: 3.2% 이상부터 위험 인식
-        'oil': calc_r(data['oil']['val'], 65, 90),       # 유가
-        'krw': calc_r(data['krw']['val'], 1280, 1450),   # 환율: 1280원부터 위험 카운트 (중요)
-        'vix': calc_r(data['vix']['val'], 12, 30),       # 공포지수: 12부터 민감하게 반응
-        'sox': calc_r(data['sox']['dd'], 0, 6),          # 반도체: 고점대비 6% 빠지면 만점 (추세 반영)
-        'mkt': calc_r(data['kospi']['dd'], 0, 5),        # 코스피: 고점대비 5% 빠지면 만점
-        'inv': calc_r(-(inv_kospi['val'] + inv_kosdaq['val'])/10, 0, 500) # 수급: 5000억 매도시 만점
+        'tnx': calc_r(data['tnx']['val'], 3.2, 4.8),
+        'oil': calc_r(data['oil']['val'], 65, 90),
+        'krw': calc_r(data['krw']['val'], 1280, 1450),
+        'vix': calc_r(data['vix']['val'], 10, 25),      # VIX 기준 바닥 낮춤 (10부터 위험 인식)
+        'sox': sox_risk,                                # Max 로직 적용
+        'mkt': mkt_risk,                                # Max 로직 적용
+        'inv': calc_r(-(inv_kospi['val'] + inv_kosdaq['val'])/10, 0, 500)
     }
     
     # 가중치 부여 (환율과 반도체, 수급이 한국장엔 깡패임)
